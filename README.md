@@ -2,6 +2,16 @@
 
 An offline, native Kotlin notebook for Android tablets. Built with Jetpack Compose, AndroidX Ink 1.0, Room, and Android's PDF renderer. Works offline without an account. Optional GitHub backups; no subscriptions or analytics.
 
+## 0.5.2 GitHub sign-in recovery
+
+Sign-in waits for your return from the GitHub browser page and retries temporary DNS/connection failures using the same device code. The approved token is retained in memory while retrying the account lookup. Install the update, approve GitHub, and return to Dotnote to finish connecting. Tablet confirmation remains pending.
+
+## 0.5.1 vector performance
+
+- Visible vector geometry stays cached above 400 strokes, avoiding repeated mesh reconstruction.
+- A shared spatial grid finds visible drawings; shape and grid geometry is reused between frames.
+- Verified with 19 JVM tests and 14 focused Android tests, including a 900-stroke rendering workload. Physical-tablet performance still needs checking.
+
 ## 0.5.0 momentum scrolling
 
 Flick with one finger to coast through PDFs and across the canvas. Faster flicks travel farther and slow down naturally. Touch the canvas again to stop immediately. Pinch zoom and drawing stay precise; with finger drawing enabled, select the Hand tool to flick.
@@ -18,7 +28,7 @@ Start with [docs/README.md](docs/README.md) for the implementation guide: archit
 
 ## Install
 
-Install `dist/dotnote-0.5.0.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
+Install `dist/dotnote-0.5.2.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
 
 Install this APK over the previous Dotnote build to keep your library.
 
@@ -49,9 +59,9 @@ Long-press an empty area of the Android home screen, choose **Widgets → Dotnot
 
 The New note dialog lets you choose the vault, browse into any existing folder, and create the note in the displayed location. The same dialog is used inside the app and from both widgets. Cancelling does not create a note. To rename a vault, open the vault chooser and tap the pencil beside its name.
 
-## Known issue deferred
+## GitHub tablet verification
 
-GitHub connection still fails on the user's Lenovo tablet with a `github.com` hostname-resolution error. This remains on [TODO.md](TODO.md) at the user's request. The new widgets, vault renaming and local drawing work without GitHub. No GitHub/network workaround is included in 0.4.0.
+The reported hostname-resolution failure happens after returning from GitHub authorization. Version 0.5.2 fixes sign-in abandoning authorization on a single network failure and avoids starting polls while Dotnote is in the background. Regression tests pass; actual Lenovo sign-in and live private-repository backup still need confirmation. See [TODO.md](TODO.md).
 
 ## Build
 
@@ -86,7 +96,7 @@ There is no Android cloud backup. **Uninstalling or clearing app data deletes lo
 - `Document.kt`: immutable scene model, geometry, history, versioned JSON format.
 - `VaultFiles.kt`, `Store.kt`, `FileLibraryDao.kt`: authoritative files, migration, index, transactional operations and legacy ZIP support.
 - `VaultCatalog.kt`, `VaultTransfer.kt`, `VaultDocumentsProvider.kt`: vault selection, folder import/export and Android Files integration.
-- `GitHub.kt`, `GitBackup.kt`, `VaultUi.kt`: encrypted credentials, device authorization, Git commits/restore, scheduling and settings.
+- `GitHub.kt`, `GitHubSignIn.kt`, `GitBackup.kt`, `VaultUi.kt`: encrypted credentials, device authorization, Git commits/restore, scheduling and settings.
 - `AppState.kt`: lifecycle-aware editor state and ordered saving.
 - `NotebookView.kt`: native Ink authoring, gesture arbitration, hit testing, viewport rendering.
 - `Rendering.kt`: completed ink, shapes, PDF import/render/export.
@@ -99,7 +109,7 @@ This is a personal-use build. No typed text, handwriting recognition, cloud sync
 
 Highlighter colors share one translucent layer below pen/shape ink. Different marker colors replace rather than darken one another where they overlap; the most recently used color is on top. Existing saved highlights use this rendering too.
 
-The canvas redraws visible objects and caches strokes and PDF pages, but it does not yet use a full spatial index. Very large notebooks need further profiling on the tablet. “Infinite” means no imposed page boundary, with the practical limits of memory and floating-point coordinates. PDF export is capped at 500 pages; backup restore at 1 GiB; individual local PDF imports at 512 MiB. Vault reading permits 10,000 entries, fewer than 64 directory levels, 64 MiB per note and 256 MiB total note JSON. Filesystem path/name limits also apply.
+The canvas uses a shared spatial grid to find visible objects, retains visible stroke geometry plus a bounded offscreen cache, and caches PDF pages. Index updates after edits and very dense visible scenes still scale with object count. Very large notebooks need further profiling on the tablet. “Infinite” means no imposed page boundary, with the practical limits of memory and floating-point coordinates. PDF export is capped at 500 pages; backup restore at 1 GiB; individual local PDF imports at 512 MiB. Vault reading permits 10,000 entries, fewer than 64 directory levels, 64 MiB per note and 256 MiB total note JSON. Filesystem path/name limits also apply.
 
 ## Verification
 

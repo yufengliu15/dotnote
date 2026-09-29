@@ -21,7 +21,7 @@ Keep scope anchored to the requested feature. The app's intended baseline is Kot
 | Add per-vault settings | `AppState.kt`, `VaultFiles.read`, settings UI | Captured store in debounce, defaults, snapshot inclusion |
 | Change vault identities/rename | `VaultCatalog.kt`, `VaultUi.kt` | Local vs portable IDs, widget intents, repo binding, migration target |
 | Add import/export support | `VaultTransfer.kt`, `VaultDocumentsProvider.kt`, `Store.kt` | SAF provider errors, staging, size/path limits, unchanged source |
-| Modify Git transport/auth | `GitHub.kt`, `VaultUi.kt` | No secrets in logs/files, token permissions, DNS vs auth failures |
+| Modify Git transport/auth | `GitHub.kt`, `GitHubSignIn.kt`, `VaultUi.kt` | No secrets in logs/files, token permissions, DNS vs auth failures |
 | Modify Git backup | `GitBackup.kt`, `VaultCatalog.kt` | Root/upload locks, expected head, pending commit, no-force update, managed paths |
 | Change widgets/recent ordering | `NoteWidgets.kt`, `RecentNotes.kt`, widget resources | PendingIntent identity, no edits from viewing, asynchronous metadata races |
 | Change creation/navigation | `NewNoteDialog.kt`, `AppState.kt`, `MainActivity.kt` | Flush failure, cross-vault destinations, saved instance recreation |
@@ -46,7 +46,7 @@ Full clickable source map is in [architecture](architecture.md).
 
 These are recorded in [TODO.md](../TODO.md), not newly claimed fixes:
 
-1. **Lenovo GitHub DNS failure.** The user still sees `Unable to resolve host "github.com": No address associated with hostname`. Required network permissions are already present; previous suggested checks did not resolve it. The user asked to defer it. Resume only as a scoped investigation; do not call live private-repository backup verified.
+1. **Lenovo GitHub DNS failure.** The user still sees `Unable to resolve host "github.com": No address associated with hostname`. Version 0.5.2 implements and tests foreground-gated authorization polling and temporary network retries. Confirm the update on the tablet; persistent foreground DNS failures still require device diagnostics. Live private-repository backup remains unverified.
 2. **Physical first-stroke verification.** Renderer/brush pre-initialization and IO document decoding are implemented, with emulator timing tests passing. Physical Lenovo digitizer latency still needs testing. Emulator screenshot timing is not an end-to-end hardware latency measurement.
 
 ## Current functional limits
@@ -66,7 +66,7 @@ These are visible design gaps or risks inferred from code; they are not all repr
 | Area | Current limitation / implication |
 | --- | --- |
 | Process lifetime | `ON_STOP` queues saves; Android can terminate before completion. “Saved” matters. Unfinished gestures are not crash-recoverable input logs. |
-| Memory/resources | Unbounded save/open queues, retained Store/database instances, full document JSON encoding and whole-library folder rewrites can grow expensive. There is no complete spatial index or very-large-vault performance certification. |
+| Memory/resources | Unbounded save/open queues, retained Store/database instances, full document JSON encoding and whole-library folder rewrites can grow expensive. Drawing uses a spatial grid, but edits rebuild it and dense visible geometry still consumes proportional memory/render time. Very-large-vault performance is not certified. |
 | Size enforcement | Import/read boundaries have limits that are not proactively applied to every local editing operation. Large local notes may later exceed scanner limits. |
 | Validation | Document JSON checks do not fully validate native input payloads, shape point counts or PDF page ranges. Some faults surface during rendering. |
 | Atomicity | Journaling makes file operations replayable; file/index/preferences/remote operations are not one global transaction. A reported error can follow a partially successful earlier layer. |

@@ -81,7 +81,7 @@ Imported/exported folders are copies/snapshots, not live external vault bindings
 
 ## GitHub UI
 
-The normal sign-in screen uses the built-in public client ID and displays a device code with Copy code/Open GitHub authorization controls. Advanced setup supports an alternate client ID or a fine-grained token. Closing the settings dialog cancels its ongoing device authorization polling.
+The normal sign-in screen uses the built-in public client ID and displays a device code with Copy code/Open GitHub authorization controls. Advanced setup supports an alternate client ID or a fine-grained token. After approval, return to Dotnote to finish connecting. New polls wait for the foreground activity; temporary network failures display a retry message and retain the same authorization code. Closing the settings dialog cancels its ongoing device authorization polling.
 
 After sign-in, the current vault can choose a dedicated repository, set automatic backup on/off, choose a whole-minute inactivity delay from 15 to 360, require unmetered networking, queue “Back up now,” disconnect its repository, or restore a repository as a new vault. Repository names may be selected from the list or entered as owner/repository or a GitHub HTTPS URL. The app neither creates repositories nor changes their privacy; users manage that on GitHub. Status is polled from local configuration every 1.5 seconds while the dialog is open.
 
@@ -91,4 +91,4 @@ Account Disconnect clears local credentials and cancels existing work for all va
 
 No drawing text tool, OCR/handwriting recognition, audio recording, PDF text search, collaborative editing, automatic device-to-device merge, or attachment gallery is implemented. The UI has no trash recovery or Git historical-version picker. Folder nesting has implementation limits rather than mathematically unlimited depth. Drawing is stylus-first; canvas accessibility is currently a description and click hook, not semantic navigation of every handwritten object.
 
-Do not add network/account requirements to ordinary note creation or editing. Widgets and vault rename work independently of the deferred Lenovo GitHub issue.
+Do not add network/account requirements to ordinary note creation or editing. Widgets and vault rename work independently of the Lenovo GitHub tablet verification.

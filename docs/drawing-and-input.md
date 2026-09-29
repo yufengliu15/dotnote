@@ -1,6 +1,6 @@
 # Drawing and input pipeline
 
-[Documentation index](README.md) · Sources: [NotebookView.kt](../app/src/main/java/dev/dotnote/app/NotebookView.kt), [Rendering.kt](../app/src/main/java/dev/dotnote/app/Rendering.kt), [Document.kt](../app/src/main/java/dev/dotnote/app/Document.kt)
+[Documentation index](README.md) · Sources: [NotebookView.kt](../app/src/main/java/dev/dotnote/app/NotebookView.kt), [Rendering.kt](../app/src/main/java/dev/dotnote/app/Rendering.kt), [Document.kt](../app/src/main/java/dev/dotnote/app/Document.kt), [SceneResources.kt](../app/src/main/java/dev/dotnote/app/SceneResources.kt)
 
 ## Two rendering paths, one saved model
 
@@ -36,7 +36,7 @@ Real samples include historical coordinates, elapsed event time and pressure cla
 
 `strokeItem` Base64-encodes the Ink input batch, records a parallel point list for geometry, records brush width, and stores opaque ARGB. Completed pen rendering decodes inputs and reconstructs the stock brush. It applies item transform and the world-to-screen matrix consistently; this is why zoomed strokes remain aligned after reopening.
 
-The native stroke cache holds 400 entries keyed by item ID, color and width. Transforms do not require re-decoding. This assumes a given item ID's underlying input bytes do not change; code adding destructive input editing must invalidate/change that cache identity.
+The native stroke cache retains every visible stroke plus up to 400 offscreen entries. This prevents sequential redraws of more than 400 visible strokes from evicting and rebuilding every mesh on each frame. Entries validate color, width and encoded inputs; transforms reuse native geometry. Shape/grid line coordinates are cached by immutable item identity and drawn in one batch per object. Visible geometry memory therefore scales with the visible working set, not a fixed 400-object cap.
 
 ## Constant-opacity highlighter
 
@@ -48,7 +48,7 @@ Only the highlighter View invalidates on live moves, once per animation frame. A
 
 PDF export retains normalized per-color `Path.Op.UNION` outlines to avoid vector antialiasing seams; expensive unions are kept out of interactive drawing. Antialiased edge coverage can differ slightly between the screen's opaque paths and the normalized PDF outlines, but overlapping interiors remain one-third opaque. Do not give each highlight its own translucent layer: that would accumulate opacity.
 
-Marker geometry uses constant-width point outlines, not a pressure-dependent mesh, while saved input data still retains pressure. The finished-outline LRU holds 400 entries with item identity checks. Group caches are rebuilt when the visible highlighter list changes. Scenes are still scanned for visibility; very large documents require physical-device profiling.
+Marker geometry uses constant-width point outlines, not a pressure-dependent mesh, while saved input data still retains pressure. Finished outlines retain the visible working set plus 400 offscreen entries, with item identity checks. Group caches are rebuilt when the visible highlighter list changes. Unchanged scenes reuse their layer lists during live input; very large documents still require physical-device profiling.
 
 ## Shapes and hit testing
 
@@ -88,7 +88,7 @@ Single-finger pans use Android `VelocityTracker` and `OverScroller` for platform
 
 The canvas background is `#FAFAF6`. Dots are spaced 24 world units; spacing doubles until at least 12 screen-dp apart. Dot radius is `1 / zoom`, keeping a stable apparent size. The grid does not snap strokes or shapes.
 
-Paint order is paper → dots → visible PDF pages → highlighter layer → pen/shapes → temporary shape/lasso/selection affordances, with live native pen ink in the overlay. PDFs and highlights occupy semantic layers regardless of when they were added. Items are culled by bounds against the visible world rectangle; there is no spatial index, so scanning still scales with total item count.
+Paint order is paper → dots → visible PDF pages → highlighter layer → pen/shapes → temporary shape/lasso/selection affordances, with live native pen ink in the overlay. PDFs and highlights occupy semantic layers regardless of when they were added. A shared world-space spatial grid (512-unit cells) queries visible bounds once for all three completed-content layers. The index rebuilds when the immutable item list changes; pan/zoom queries reuse it, and unchanged viewports reuse the split scene lists. Candidates are deduplicated and sorted back into document order. Items spanning more than 64 cells use an overflow list; viewports spanning more than 4,096 cells fall back to linear culling to bound query work. Editing still rebuilds the index in proportion to note size, and extremely zoomed-out or overlapping scenes still require drawing all visible objects. Hit testing and selection retain their existing geometry rules.
 
 ## Undo and failure boundaries
 
@@ -96,4 +96,4 @@ Paint order is paper → dots → visible PDF pages → highlighter layer → pe
 
 `ACTION_CANCEL` restores the captured scene without committing partial edits. A completed pen save does not wait for asynchronous display handoff. However, editor shutdown or process death during a still-active, unfinished gesture is not a guaranteed recovery of that gesture. Save queues and lifecycle callbacks do not make unsaved RAM durable.
 
-Relevant tests are `DocumentTest`, `GesturePipelineTest`, `NativePipelineTest`, `EditorUpdateTest`, `HighlighterPerformanceTest`, and `InkStartupTest`; see the [test guide](build-test-release.md) for their precise scope and hardware limitations.
+Relevant tests are `DocumentTest`, `GesturePipelineTest`, `NativePipelineTest`, `EditorUpdateTest`, `HighlighterPerformanceTest`, `VectorPerformanceTest`, `SceneResourcesTest`, and `InkStartupTest`; see the [test guide](build-test-release.md) for their precise scope and hardware limitations.

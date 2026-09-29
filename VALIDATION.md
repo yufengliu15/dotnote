@@ -1,4 +1,42 @@
-# Verification · 0.5.0 (build 6)
+# Verification · 0.5.2 (build 8)
+
+Validated September 29, 2026 using installed JDK 20 (Java/Kotlin bytecode target 17), Android SDK 36 and the cached Gradle toolchain. Android tests ran on the existing disposable Android 16 / API 36 ARM64 emulator. Physical Lenovo confirmation is pending.
+
+- Debug and instrumentation APKs built successfully; **29 JVM tests passed** (19 existing + 10 GitHub sign-in regressions).
+- **9 focused Android tests passed**: GitHubSignInLifecycleTest (2), VaultPipelineTest (4), VaultLifecycleTest (3). Drawing/widget instrumentation was not rerun for this auth update; prior results are recorded below.
+- Lint: **0 errors, 35 warnings**. Final versioned APK build and lint passed after changing only version code/name; behavioral tests ran before that version-only packaging step.
+- APK v2 signature verifies; signing certificate matches `dist/dotnote-0.5.1.apk`. Package `dev.dotnote.app`, version **0.5.2 / build 8**. Install over the prior build to preserve local vaults.
+
+The reported error occurs after browser authorization. Previously, polling continued in the background and any temporary hostname-resolution failure ended the attempt and discarded its device code. Sign-in now gates each new network attempt on a resumed activity, retries temporary DNS/socket/connection failures with increased intervals until expiry, and retains an issued token in memory while retrying `/user` for up to 60 seconds. Initial code acquisition retries for up to 60 seconds. Terminal auth/HTTP/TLS failures still stop; closing settings and cancellation stop attempts. OAuth connections close even when writing the POST body fails. No network routing, DNS provider or TLS verification changes were made.
+
+JVM regressions exercise waiting for browser return, retrying the same device code after DNS failure, retaining an approved token through account lookup failure, timeout backoff, `slow_down`, expiry while waiting/backgrounded, denial, cancellation, initial-code retries and TLS/auth classification. Android tests use a real LifecycleRegistry to verify background gating and cancellation. Git/vault tests still use deterministic injected API responses, not a live GitHub account.
+
+Tablet acceptance: install `dist/dotnote-0.5.2.apk`, connect with GitHub, approve in the browser, and return to Dotnote. Confirm account/repository selection, then test private-vault backup/restore. If DNS still fails while Dotnote stays open, device/network diagnostics are required; this build does not establish that the tablet's underlying DNS issue is resolved.
+
+Build and test logs: `/private/tmp/dotnote-toolchain/github-fix-build.log`, `github-fix-package.log`, and `github-fix-android-tests.log`. Versioned APK, source archive and checksums are in `dist/`.
+
+---
+
+# Historical verification · 0.5.1 (build 7)
+
+Validated September 29, 2026 on the existing Android 16 / API 36 ARM64 emulator with `skiagl`. Version code 7 / 0.5.1; this is a debug-signed personal-test build.
+
+- Debug APK, instrumentation APK, Kotlin compilation, and lint completed successfully using installed JDK 20 (bytecode target 17), SDK 36, and the cached Gradle toolchain. Lint: **0 errors, 35 warnings**.
+- JVM tests: **19 passed**, including five new scene-resource regressions. Spatial queries match linear culling and document order over 10,001 mixed objects and extreme coordinates. A pan in a 20,000-object note reads fewer than 20 nearby items; repeated layer queries read zero additional items. Edit, append, deletion, undo and viewport changes invalidate correctly. Visible resources above the old 400-entry limit survive redraws and pan transitions; offscreen retention remains bounded.
+- Android tests: **14 passed** in separate instrumentation invocations: VectorPerformanceTest (2), NativePipelineTest (2), GesturePipelineTest (1), EditorUpdateTest (3), InkStartupTest (1), HighlighterPerformanceTest (2), FlingNavigationTest (3). Storage, Git and widget suites were not rerun for this rendering change.
+- Dense vector workload: **900 strokes / 36,000 input points**. Initial software render: **770.975 ms**; five cached redraws: **18.161 ms median**. Mesh construction remained at exactly 900 across redraws, reordered views, zoom and object movement. Recoloring and replacing encoded inputs rebuilt only the affected stroke. Cached redraw pixels matched the initial render. These are cold/warm measurements of this implementation, not a measured old/new speedup or hardware frame-latency claim.
+- Native handoff visibility works without replacing the scene list; cached grid geometry refreshes after transforms. Existing pressure ink persistence, zoomed input, selection/undo, highlighter opacity, PDF export, first-stroke visibility and fling navigation regressions pass.
+- Highlighter workload: **4.701 ms median / 5.815 ms p95** software frames. First-stroke input dispatch: **38 ms**; screenshot-observed visibility: **297 ms**.
+
+Visible geometry stays resident with up to 400 offscreen resources per cache. This avoids cache thrashing at the cost of memory proportional to visible geometry. The spatial index rebuilds on edits, and cold native mesh construction remains synchronous. Very dense views, initial opening and physical-tablet input/GPU performance still need device profiling. Saved note format and vector export semantics are unchanged.
+
+Packaging follow-up: rebuilt the APK with version **0.5.1 / build 7**, verified APK metadata and signature, and confirmed the signing certificate matches `dist/dotnote-0.5.0.apk`. Version-only packaging did not rerun the behavioral suites above. Versioned APK, source archive and SHA-256 checksums are in `dist/`.
+
+Build logs and individual instrumentation results are under `/private/tmp/dotnote-toolchain/vector-*`; generated APK: `app/build/outputs/apk/debug/app-debug.apk`.
+
+---
+
+# Historical verification · 0.5.0 (build 6)
 
 Validated September 29, 2026 on the existing Android 16 / API 36 ARM64 tablet emulator (1280 × 800), using the documented `skiagl` backend. Physical tablet scrolling feel and large-document frame rates remain unverified.
 

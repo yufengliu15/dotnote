@@ -14,7 +14,7 @@ Use a full JDK 17 and an Android SDK with platform 36 plus compatible build tool
 | KSP | 2.2.21-2.0.4 |
 | Java/Kotlin bytecode | 17 |
 | Package / namespace | `dev.dotnote.app` |
-| App version | code 6, name `0.5.0` |
+| App version | code 8, name `0.5.2` |
 | Android support | minimum API 29 (Android 10), compile/target API 36 (Android 16) |
 | Compose BOM | 2025.12.00 |
 | Activity Compose | 1.12.1 |
@@ -52,19 +52,21 @@ Use `adb devices` to confirm the intended target; pass `-s <serial>` when more t
 
 The current distributable is a debug-signed personal-test build. There is no checked-in production signing setup, Play Store pipeline or CI release workflow. `assembleRelease` alone is not a configured production distribution process.
 
-## Test inventory: 14 JVM tests
+## Test inventory: 29 JVM tests
 
 Tests are in [`app/src/test/java/dev/dotnote/app/`](../app/src/test/java/dev/dotnote/app/).
 
 | Class | Count | Contracts |
 | --- | --- | --- |
 | `DocumentTest` | 10 | Camera zoom anchor; valid/invalid/corrupt folder cycles; codec round trip with attachments/transforms; gesture history and redo invalidation; geometric hit tests including locked PDFs; concave polygon selection; transform composition; attachment traversal rejection; unsupported version rejection |
+| `GitHubSignInTest` | 10 | Browser-return gate, same-code DNS retry, approved-token retention, slowdown/timeout backoff, code expiry, denial, cancellation, initial-code retries, TLS/auth classification |
 | `VaultRulesTest` | 2 | Edit-based backup deadlines and clamping; local/remote path and repository-name restrictions |
+| `SceneResourcesTest` | 5 | Visible-cache retention above 400 objects; bounded offscreen LRU; spatial lookup equivalence/order and extreme coordinates; 20,000-object pan query work; edit/undo/viewport invalidation |
 | `WidgetRulesTest` | 2 | Adaptive widget capacity; full folder paths with duplicate display names |
 
 These are ordinary JUnit tests with a JVM `org.json` dependency. Native Android Ink rendering, actual Room/WorkManager, Views and PDF APIs require instrumentation; a passing JVM suite cannot establish those behaviors.
 
-## Test inventory: 23 Android tests
+## Test inventory: 27 Android tests
 
 Tests are in [`app/src/androidTest/java/dev/dotnote/app/`](../app/src/androidTest/java/dev/dotnote/app/).
 
@@ -74,10 +76,12 @@ Tests are in [`app/src/androidTest/java/dev/dotnote/app/`](../app/src/androidTes
 | `FlingNavigationTest` | 3 | 40-page PDF fling, speed/direction/zoom, decay and saved camera; touch/stylus/page/fit/release interruption; slow/cancelled/pinch/drawing exclusion |
 | `GesturePipelineTest` | 1 | `stylusCoordinatesUndoAndReopenSurviveZoom`: synthetic stylus at 200% zoom, pen/highlighter, save/reopen and history |
 | `EditorUpdateTest` | 3 | `repeatedHighlightsKeepOpacityAfterReopen`; `pdfHighlightsStayTranslucentAndDoNotAccumulate`; `paletteLongPressPersistsAndSelectionPickerSupportsUndo` |
+| `GitHubSignInLifecycleTest` | 2 | Real Android lifecycle pauses exchange while the browser is open; cancellation prevents exchange on return |
 | `VaultPipelineTest` | 4 | `filesRebuildIndexAndPreserveMovedNotes`; `interruptedFileTransactionReplaysBeforeReading`; `androidFilesProviderImportsNestedVaultWithoutChangingSource`; `gitBackupRestoreNoChangeAndConflictRecovery` |
 | `VaultLifecycleTest` | 3 | `lastEditReplacesScheduledWorkAndKeepsNetworkPreference`; `migrationCopiesLegacyNotesAndPdfsWithoutDeletingOriginals`; `vaultSwitchFlushesNotesAndKeepsSeparatePalettes` |
 | `WidgetPipelineTest` | 4 | `vaultRenamePreservesIdentityAndMarksBackupPending`; `openingHistoryPersistsAndRenameMoveDeleteRefreshIt`; `resizedRemoteViewsFitMoreNotesAndKeepDistinctLaunchTargets`; `widgetLaunchCreatesInSelectedFolderAndOpensAcrossVaults` |
 | `HighlighterPerformanceTest` | 2 | Live overlap/chunk opacity, pen layering, reopen/cancel rendering; 2,400-point live-stroke software frame budget |
+| `VectorPerformanceTest` | 2 | 900 native strokes reuse meshes and preserve pixels across redraws; zoom/transforms reuse geometry; recolor/input edits invalidate; handoff visibility and shape transforms |
 | `InkStartupTest` | 1 | `firstPenStrokeIsVisibleBeforePenUp`: first-stroke dispatch and screenshot visibility before ACTION_UP, plus no phantom warmup item |
 
 Git tests use an injectable deterministic API that models blobs, trees, commits and branch refs. It covers lost final responses and remote conflicts, but no real account consent or private repository. WorkManager tests inspect real queued jobs; they do not simulate six hours of Doze/OEM battery policies. Android Files tests use the app's provider, not every external provider. Tests that create real app UI/preferences should run on a disposable emulator/test profile, not the user's only notebook installation.
@@ -110,10 +114,10 @@ The historical 0.4.0 release result was 14/14 JVM and 18/18 Android. For 0.4.1, 
 | Change | Minimum relevant verification |
 | --- | --- |
 | Model/codec/geometry | JVM `DocumentTest`; native roundtrip if ink fields change |
-| Input/brush/rendering | Native + gesture + editor + startup + highlighter performance tests; physical stylus acceptance |
+| Input/brush/rendering | Native + gesture + editor + startup + highlighter/vector performance tests; physical stylus acceptance |
 | PDF import/export | Native pipeline and exported-highlight test; real multi-page document/provider |
 | File layout/transactions/transfer | Vault pipeline + migration/switch lifecycle; malformed/interrupted cases |
-| Git/auth/scheduling | Vault rules + pipeline + lifecycle; live account/network checks only when authorized/available |
+| Git/auth/scheduling | Sign-in JVM/lifecycle tests + vault rules + pipeline + lifecycle; live account/network checks only when authorized/available |
 | Widgets/new-note/rename | Widget rules + widget pipeline; launcher resize/cold/warm opening |
 | Documentation only | Relative links, examples, source consistency and `git diff --check`; no APK required |
 
@@ -126,7 +130,7 @@ Run the relevant checks plus compilation/lint for source changes. Broaden testin
 3. Import several PDFs, navigate distant pages, zoom, rotate and export visible/entire note. Confirm failure feedback for damaged/oversize files.
 4. Create nested folders and same-name notes, move/rename, reject cycles/nonempty deletion. Background and reopen after “Saved.” Export/import complete vaults and merge legacy ZIP without replacing originals.
 5. Add both widgets, resize/orient, create in another vault's nested folder, test recent order and renamed/deleted targets. Rename a vault and verify widget/file-provider labels.
-6. When the deferred connection issue is resumed, authorize GitHub, back up/restore a private test vault, revoke credentials, interrupt network/ref acknowledgement, and create a remote conflict. Confirm local notes remain usable throughout.
+6. Authorize GitHub in the browser and return to Dotnote to complete sign-in; then back up/restore a private test vault, revoke credentials, interrupt network/ref acknowledgement, and create a remote conflict. Confirm local notes remain usable throughout.
 
 ## Packaging and signing
 

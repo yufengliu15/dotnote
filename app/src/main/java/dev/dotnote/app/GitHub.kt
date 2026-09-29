@@ -210,8 +210,13 @@ open class GitHub(private val token: String) {
         c.setRequestProperty("Accept", "application/json")
         c.setRequestProperty("Content-Type", "application/x-www-form-urlencoded")
         c.setFixedLengthStreamingMode(bytes.size)
-        c.outputStream.use { it.write(bytes) }
-        return JSONObject(result(c))
+        try {
+            c.outputStream.use { it.write(bytes) }
+            return JSONObject(result(c))
+        } finally {
+            // Writing the POST body can fail before result() gets a chance to clean up.
+            c.disconnect()
+        }
     }
 
     fun user() = JSONObject(request("/user")).getString("login")

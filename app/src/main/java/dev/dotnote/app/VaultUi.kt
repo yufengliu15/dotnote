@@ -19,6 +19,8 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.withResumed
 import java.text.DateFormat
 import java.util.Date
 import kotlinx.coroutines.*
@@ -123,6 +125,7 @@ fun VaultManagerDialog(state: AppState, onDismiss: () -> Unit) {
 @Composable
 fun GitHubSettings(state: AppState, onDismiss: () -> Unit) {
     val context = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     val scope = rememberCoroutineScope()
     var account by remember { mutableStateOf("") }
     var clientId by remember {
@@ -136,6 +139,7 @@ fun GitHubSettings(state: AppState, onDismiss: () -> Unit) {
     var accessToken by remember { mutableStateOf("") }
     var device by remember { mutableStateOf<DeviceLogin?>(null) }
     var authJob by remember { mutableStateOf<Job?>(null) }
+    var authStatus by remember { mutableStateOf<String?>(null) }
     var working by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var repos by remember { mutableStateOf<List<GitRepo>>(emptyList()) }
@@ -214,87 +218,41 @@ fun GitHubSettings(state: AppState, onDismiss: () -> Unit) {
                                 scope.launch {
                                     working = true
                                     error = null
+                                    authStatus = null
                                     try {
                                         context
                                             .getSharedPreferences("github-setup", 0)
                                             .edit()
                                             .putString("clientId", clientId)
                                             .apply()
-                                        val response =
-                                            withContext(Dispatchers.IO) {
-                                                GitHub("")
-                                                    .oauth(
-                                                        "device/code",
-                                                        mapOf(
-                                                            "client_id" to clientId,
-                                                            "scope" to "repo",
-                                                        ),
-                                                    )
-                                            }
-                                        require(response.has("device_code")) {
-                                            "GitHub rejected this client ID. Enable device authorization on the app registration."
-                                        }
-                                        val login =
-                                            DeviceLogin(
-                                                response.getString("device_code"),
-                                                response.getString("user_code"),
-                                                response.getString("verification_uri"),
-                                                response.optInt("interval", 5),
-                                                response.getInt("expires_in"),
+                                        val signIn =
+                                            GitHubSignIn(
+                                                awaitForeground = { lifecycle.withResumed {} },
+                                                onNetworkWait = { authStatus = it },
                                             )
-                                        require(login.uri == "https://github.com/login/device") {
-                                            "Unexpected sign-in URL"
-                                        }
+                                        // Snapshot this ID: advanced setup can be edited while
+                                        // awaiting consent.
+                                        val signInClientId = clientId
+                                        val login = signIn.start(signInClientId)
                                         device = login
-                                        val deadline =
-                                            System.currentTimeMillis() + login.expires * 1000L
-                                        var interval = login.interval.coerceAtLeast(5)
-                                        while (System.currentTimeMillis() < deadline) {
-                                            delay(interval * 1000L)
-                                            val token =
-                                                withContext(Dispatchers.IO) {
-                                                    GitHub("")
-                                                        .oauth(
-                                                            "oauth/access_token",
-                                                            mapOf(
-                                                                "client_id" to clientId,
-                                                                "device_code" to login.code,
-                                                                "grant_type" to
-                                                                    "urn:ietf:params:oauth:grant-type:device_code",
-                                                            ),
-                                                        )
-                                                }
-                                            if (token.has("access_token")) {
-                                                withContext(Dispatchers.IO) {
-                                                    val loginName =
-                                                        GitHub(token.getString("access_token"))
-                                                            .user()
-                                                    val stored =
-                                                        JSONObject()
-                                                            .put("clientId", clientId)
-                                                            .put("login", loginName)
-                                                    GitHubAuth.saveResponse(stored, token)
-                                                    Credentials(context).save(stored)
-                                                }
-                                                device = null
-                                                refresh()
-                                                return@launch
-                                            }
-                                            when (token.optString("error")) {
-                                                "authorization_pending" -> Unit
-                                                "slow_down" -> interval += 5
-                                                else ->
-                                                    error(
-                                                        "GitHub authorization expired or was declined. Try connecting again."
-                                                    )
-                                            }
+                                        val (token, loginName) =
+                                            signIn.complete(signInClientId, login)
+                                        withContext(Dispatchers.IO) {
+                                            val stored =
+                                                JSONObject()
+                                                    .put("clientId", signInClientId)
+                                                    .put("login", loginName)
+                                            GitHubAuth.saveResponse(stored, token)
+                                            Credentials(context).save(stored)
                                         }
-                                        error("GitHub authorization timed out. Try again.")
+                                        device = null
+                                        refresh()
                                     } catch (e: Exception) {
                                         if (e is CancellationException) throw e
                                         error = e.message
                                     } finally {
                                         working = false
+                                        authStatus = null
                                         device = null
                                     }
                                 }
@@ -302,7 +260,9 @@ fun GitHubSettings(state: AppState, onDismiss: () -> Unit) {
                     ) {
                         Text("Connect with GitHub")
                     }
+                    authStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
                     device?.let { login ->
+                        Text("After approving on GitHub, return to Dotnote to finish connecting.")
                         Text(
                             "Enter this code on GitHub: ${login.userCode}",
                             style = MaterialTheme.typography.titleLarge,
@@ -330,6 +290,8 @@ fun GitHubSettings(state: AppState, onDismiss: () -> Unit) {
                         ) {
                             Text("Open GitHub authorization")
                         }
+                    }
+                    if (working && authJob?.isActive == true) {
                         TextButton(onClick = { authJob?.cancel() }) { Text("Cancel sign-in") }
                     }
                     TextButton(onClick = { advanced = !advanced }) {

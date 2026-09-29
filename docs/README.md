@@ -42,9 +42,9 @@ For a storage change, read the first three guides and the GitHub guide before ed
 
 ## Current verification status
 
-The existing [release validation record](../VALIDATION.md) reports 14 JVM and 18 Android tests passing, debug APK packaging passing, and lint with 0 errors / 23 warnings. UI instrumentation used separate app processes on an Android 16 ARM64 emulator because of a documented native graphics crash. These are previous release results, not tests rerun by this documentation update.
+The [release validation record](../VALIDATION.md) records current build, lint and test results. Version 0.5.2 passes 29 JVM tests and 9 focused Android tests for sign-in lifecycle, vault protocol and scheduling. Earlier drawing/UI suites are documented separately, including the emulator graphics caveat.
 
-The user still cannot sign into GitHub on the Lenovo tablet because `github.com` fails hostname resolution. That issue is explicitly deferred in [TODO.md](../TODO.md). Git backup protocol tests use an injectable fake API; they do not certify live private-repository backup. Physical Lenovo stylus latency, OEM palm/button behavior, and Android 17 operation also need device acceptance.
+GitHub sign-in now waits for Dotnote to return to the foreground and retries temporary hostname-resolution failures. Lenovo confirmation and live private-repository backup remain pending in [TODO.md](../TODO.md). Physical stylus latency, OEM palm/button behavior, and Android 17 operation also need device acceptance.
 
 ## Where things live
 

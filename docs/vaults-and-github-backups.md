@@ -1,6 +1,6 @@
 # Vaults and GitHub backups
 
-[Documentation index](README.md) · Sources: [GitHub.kt](../app/src/main/java/dev/dotnote/app/GitHub.kt), [GitBackup.kt](../app/src/main/java/dev/dotnote/app/GitBackup.kt), [VaultCatalog.kt](../app/src/main/java/dev/dotnote/app/VaultCatalog.kt), [VaultUi.kt](../app/src/main/java/dev/dotnote/app/VaultUi.kt)
+[Documentation index](README.md) · Sources: [GitHub.kt](../app/src/main/java/dev/dotnote/app/GitHub.kt), [GitHubSignIn.kt](../app/src/main/java/dev/dotnote/app/GitHubSignIn.kt), [GitBackup.kt](../app/src/main/java/dev/dotnote/app/GitBackup.kt), [VaultCatalog.kt](../app/src/main/java/dev/dotnote/app/VaultCatalog.kt), [VaultUi.kt](../app/src/main/java/dev/dotnote/app/VaultUi.kt)
 
 ## Contract
 
@@ -20,8 +20,8 @@ The public OAuth client ID is `Ov23lisfSrWV5wQwk2we`. It is an identifier, not a
 2. Require a device code and the expected verification URI `https://github.com/login/device`.
 3. Show `user_code`; let the user copy it and open the URI in a browser.
 4. Poll `https://github.com/login/oauth/access_token` with client ID, device code, and `urn:ietf:params:oauth:grant-type:device_code`.
-5. Wait at least five seconds between polls; `authorization_pending` continues and `slow_down` adds five seconds. Stop on timeout, declined/expired response, cancellation, or success.
-6. On success, request `/user`, then save login, client ID and token response fields in encrypted credentials.
+5. Wait at least five seconds between polls and await a resumed activity before each network attempt. Opening the browser pauses new polls; returning to Dotnote resumes the same device code. `authorization_pending` continues and `slow_down` adds five seconds. Temporary DNS/socket/connection failures retry with increased intervals until code expiry; terminal OAuth/HTTP/TLS failures and cancellation stop sign-in. Deadlines use a monotonic clock.
+6. On success, retain the token response in memory while requesting `/user`. Retry temporary account-lookup failures for up to 60 seconds without exchanging the device code again, then save login, client ID and token response fields in encrypted credentials. Initial device-code acquisition also retries temporary network failures for up to 60 seconds. Closing settings cancels the attempt.
 
 The app has no OAuth redirect activity, callback URL handler, embedded client secret or auth server. Device authorization must be enabled for the registered GitHub app. This code path does not consume a redirect URI even if GitHub registration asks for one.
 
@@ -122,8 +122,8 @@ When the branch is newer than `base`, keep local work, restore the repository as
 
 Private repositories restrict GitHub access but vault content is not end-to-end encrypted. Git LFS, arbitrary Git hosts, repository creation/privacy management, scheduled historical retention, merge conflict resolution, and background download synchronization are absent. Large PDFs that work locally may exceed the stricter Git file limit.
 
-## Verification and deferred issue
+## Verification and tablet acceptance
 
 `VaultPipelineTest` uses injected `GitHub`/token providers to test trees, commits, no-change backups, final-response loss, restore and remote conflicts. `VaultLifecycleTest` inspects real WorkManager requests for delay replacement and unmetered constraints. These are meaningful local protocol tests, not live private-account certification.
 
-The release record confirms the configured client ID obtained a live device code. The user's Lenovo still reports `Unable to resolve host "github.com": No address associated with hostname`; internet/network-state permissions already exist. The user explicitly deferred this in [TODO.md](../TODO.md). Do not label sign-in or end-to-end backup fixed without reproducing it on that tablet. Future diagnosis should distinguish DNS/network failure before token exchange from API/auth/permission errors after it, and should never log tokens.
+The release record confirms the configured client ID obtained a live device code. The user's Lenovo reports `Unable to resolve host "github.com": No address associated with hostname` after browser authorization; internet/network-state permissions already exist. Version 0.5.2 fixes the reproducible code defect where a single temporary network failure discarded that authorization, and gates new sign-in requests on the foreground activity. Ten JVM regression tests cover DNS recovery, token retention, polling intervals, expiry and cancellation; two Android tests exercise the real lifecycle foreground gate. Actual tablet DNS recovery, account consent and live private-repository backup still need confirmation. See [TODO.md](../TODO.md); never log codes or tokens during device diagnosis.

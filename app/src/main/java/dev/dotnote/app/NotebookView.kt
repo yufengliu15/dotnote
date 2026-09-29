@@ -29,6 +29,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
     private var warmedSurface = false
     private val renderer = ObjectRenderer(vectorHighlights = false)
     private val highlightRenderer = ObjectRenderer(vectorHighlights = false)
+    private val sceneIndex = SceneIndex()
     private val pageSource = PdfPageSource(state.store.assets)
     private val worker = Executors.newSingleThreadExecutor()
     private val cache =
@@ -88,9 +89,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
                 canvas.concat(matrix)
                 highlightRenderer.drawScene(
                     canvas,
-                    state.document.items.filter {
-                        it.kind == "HIGHLIGHTER" && it.bounds.intersects(visible)
-                    },
+                    sceneIndex.visible(state.document.items, visible).highlights,
                     matrix,
                     highlightPreview,
                 )
@@ -358,16 +357,19 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
     private fun world(e: MotionEvent, index: Int) =
         state.document.camera.world(Pt(e.getX(index) / density, e.getY(index) / density))
 
-    private fun selectionBounds() =
-        state.document.items
-            .filter { it.id in state.selection }
-            .map { it.bounds }
-            .reduceOrNull { a, b -> a.union(b) }
+    private fun selectionBounds(): Bounds? =
+        if (state.selection.isEmpty()) null
+        else
+            state.document.items
+                .filter { it.id in state.selection }
+                .map { it.bounds }
+                .reduceOrNull { a, b -> a.union(b) }
 
     private fun drawContent(canvas: Canvas, background: Boolean) {
         if (background) canvas.drawColor(0xfffafaf6.toInt())
         val doc = state.document
         val visible = viewport()
+        val scene = sceneIndex.visible(doc.items, visible)
         val matrix = screenMatrix()
         val z = doc.camera.zoom
         canvas.save()
@@ -388,72 +390,60 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
                     x += spacing
                 }
             }
-            doc.items
-                .filter { it.kind == "PDF" && it.bounds.intersects(visible) }
-                .forEach { item ->
-                    val b = item.bounds
-                    paint.color = Color.WHITE
-                    canvas.drawRect(b.rect(), paint)
-                    val desired = (b.width * z * density).toInt().coerceIn(128, 2048)
-                    val target =
-                        when {
-                            desired <= 512 -> 512
-                            desired <= 1024 -> 1024
-                            else -> 2048
-                        }
-                    val key = "${item.asset}:${item.page}:$target"
-                    val bitmap = cache.get(key)
-                    if (bitmap != null) {
-                        paint.isFilterBitmap = true
-                        canvas.drawBitmap(bitmap, null, b.rect(), paint)
-                    } else {
-                        paint.color = 0xff72796f.toInt()
-                        paint.textSize = 16f
-                        canvas.drawText(
-                            if (key in failed) "Page unavailable"
-                            else "Loading page ${item.page+1}…",
-                            b.left + 24,
-                            b.top + 36,
-                            paint,
-                        )
-                        if (!disposed && key !in failed && pending.add(key))
-                            worker.execute {
-                                val result = runCatching { pageSource.render(item, target) }
-                                post {
-                                    pending.remove(key)
-                                    if (!disposed) {
-                                        result.fold(
-                                            { cache.put(key, it) },
-                                            {
-                                                failed.add(key)
-                                                state.message =
-                                                    "A PDF page could not be read: ${it.message}"
-                                            },
-                                        )
-                                        content.invalidate()
-                                    }
+            scene.pages.forEach { item ->
+                val b = item.bounds
+                paint.color = Color.WHITE
+                canvas.drawRect(b.rect(), paint)
+                val desired = (b.width * z * density).toInt().coerceIn(128, 2048)
+                val target =
+                    when {
+                        desired <= 512 -> 512
+                        desired <= 1024 -> 1024
+                        else -> 2048
+                    }
+                val key = "${item.asset}:${item.page}:$target"
+                val bitmap = cache.get(key)
+                if (bitmap != null) {
+                    paint.isFilterBitmap = true
+                    canvas.drawBitmap(bitmap, null, b.rect(), paint)
+                } else {
+                    paint.color = 0xff72796f.toInt()
+                    paint.textSize = 16f
+                    canvas.drawText(
+                        if (key in failed) "Page unavailable" else "Loading page ${item.page+1}…",
+                        b.left + 24,
+                        b.top + 36,
+                        paint,
+                    )
+                    if (!disposed && key !in failed && pending.add(key))
+                        worker.execute {
+                            val result = runCatching { pageSource.render(item, target) }
+                            post {
+                                pending.remove(key)
+                                if (!disposed) {
+                                    result.fold(
+                                        { cache.put(key, it) },
+                                        {
+                                            failed.add(key)
+                                            state.message =
+                                                "A PDF page could not be read: ${it.message}"
+                                        },
+                                    )
+                                    content.invalidate()
                                 }
                             }
-                    }
-                    paint.style = Paint.Style.STROKE
-                    paint.color = 0xffdadfd4.toInt()
-                    paint.strokeWidth = 1f / z
-                    canvas.drawRect(b.rect(), paint)
-                    paint.style = Paint.Style.FILL
+                        }
                 }
+                paint.style = Paint.Style.STROKE
+                paint.color = 0xffdadfd4.toInt()
+                paint.strokeWidth = 1f / z
+                canvas.drawRect(b.rect(), paint)
+                paint.style = Paint.Style.FILL
+            }
             canvas.restore()
             return
         }
-        renderer.drawScene(
-            canvas,
-            doc.items.filter {
-                it.kind != "PDF" &&
-                    it.kind != "HIGHLIGHTER" &&
-                    it.id !in handoffs.values &&
-                    it.bounds.intersects(visible)
-            },
-            matrix,
-        )
+        renderer.drawScene(canvas, scene.foreground, matrix, hiddenIds = handoffs.values)
         shape?.let { renderer.draw(canvas, it, matrix) }
         if (lasso.size > 1) {
             paint.style = Paint.Style.STROKE

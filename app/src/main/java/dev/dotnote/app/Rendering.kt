@@ -5,7 +5,6 @@ import android.graphics.pdf.PdfDocument
 import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.ParcelFileDescriptor
-import android.util.LruCache
 import androidx.ink.brush.Brush
 import androidx.ink.brush.StockBrushes
 import androidx.ink.rendering.android.canvas.CanvasStrokeRenderer
@@ -145,12 +144,18 @@ class LiveHighlight(val color: Int, val width: Float) {
 }
 
 class ObjectRenderer(private val vectorHighlights: Boolean = true) {
+    private var cachedScene: List<Item>? = null
+    private var foreground: List<Item> = emptyList()
     private var cachedHighlights: List<Item> = emptyList()
     private val cachedHighlightGroups = linkedMapOf<Int, Path>()
     private val interactiveGroups = linkedMapOf<Int, MutableList<Path>>()
     private val inkRenderer by lazy { CanvasStrokeRenderer.create() }
-    private val highlightPaths = object : LruCache<String, Pair<Item, Path>>(400) {}
-    private val strokes = object : LruCache<String, Stroke>(400) {}
+    private val highlightPaths = VisibleResourceCache<Pair<Item, Path>>()
+    private val strokes = VisibleResourceCache<Pair<Item, Stroke>>()
+    private val shapeLines = VisibleResourceCache<Pair<Item, FloatArray>>()
+    internal var strokeBuildCount = 0
+        private set
+
     private val paint =
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
             strokeCap = Paint.Cap.ROUND
@@ -164,8 +169,18 @@ class ObjectRenderer(private val vectorHighlights: Boolean = true) {
         items: List<Item>,
         worldToScreen: Matrix,
         liveHighlight: LiveHighlight? = null,
+        hiddenIds: Collection<String> = emptySet(),
     ) {
-        val highlights = items.filter { it.kind == "HIGHLIGHTER" }
+        if (cachedScene !== items) {
+            val ids = items.mapTo(HashSet()) { it.id }
+            strokes.retainVisible(ids)
+            highlightPaths.retainVisible(ids)
+            shapeLines.retainVisible(ids)
+            foreground = items.filter { it.kind != "HIGHLIGHTER" && it.kind != "PDF" }
+        }
+        val highlights =
+            if (cachedScene === items) cachedHighlights
+            else items.filter { it.kind == "HIGHLIGHTER" }
         if (cachedHighlights != highlights) {
             cachedHighlightGroups.clear()
             interactiveGroups.clear()
@@ -182,6 +197,7 @@ class ObjectRenderer(private val vectorHighlights: Boolean = true) {
             }
             cachedHighlights = highlights
         }
+        cachedScene = items
         if (highlights.isNotEmpty() || liveHighlight != null) {
             val layer = canvas.saveLayerAlpha(null, 85)
             paint.style = Paint.Style.FILL
@@ -209,9 +225,7 @@ class ObjectRenderer(private val vectorHighlights: Boolean = true) {
             liveHighlight?.draw(canvas, paint)
             canvas.restoreToCount(layer)
         }
-        items
-            .filter { it.kind != "HIGHLIGHTER" && it.kind != "PDF" }
-            .forEach { draw(canvas, it, worldToScreen) }
+        foreground.forEach { if (it.id !in hiddenIds) draw(canvas, it, worldToScreen) }
     }
 
     private fun mergeOutline(path: Path, outline: Path) {
@@ -221,14 +235,17 @@ class ObjectRenderer(private val vectorHighlights: Boolean = true) {
     }
 
     private fun highlightOutline(item: Item): Path {
-        highlightPaths.get(item.id)?.let { (cached, path) -> if (cached === item) return path }
+        highlightPaths[item.id]?.let { (cached, path) -> if (cached === item) return path }
         if (item.points.isEmpty()) return Path()
         paint.strokeWidth = item.width
         paint.style = Paint.Style.STROKE
         val centerline =
             Path().apply {
                 moveTo(item.points.first().x, item.points.first().y)
-                item.points.drop(1).forEach { lineTo(it.x, it.y) }
+                for (index in 1 until item.points.size) {
+                    val point = item.points[index]
+                    lineTo(point.x, point.y)
+                }
             }
         return Path()
             .apply {
@@ -247,16 +264,25 @@ class ObjectRenderer(private val vectorHighlights: Boolean = true) {
         }
         canvas.save()
         if (item.ink != null) {
-            val key = "${item.id}:${item.color}:${item.width}"
+            val cached = strokes[item.id]
             val stroke =
-                strokes.get(key)
+                cached
+                    ?.takeIf { (previous, _) ->
+                        previous.color == item.color &&
+                            previous.width == item.width &&
+                            previous.ink == item.ink
+                    }
+                    ?.second
                     ?: Stroke(
                             brush(item.color, item.width, item.kind == "HIGHLIGHTER"),
                             StrokeInputBatch.decode(
                                 ByteArrayInputStream(Base64.getDecoder().decode(item.ink))
                             ),
                         )
-                        .also { strokes.put(key, it) }
+                        .also {
+                            strokeBuildCount++
+                            strokes.put(item.id, item to it)
+                        }
             val local = item.transform.matrix()
             canvas.concat(local)
             val screen = Matrix().apply { setConcat(worldToScreen, local) }
@@ -267,8 +293,24 @@ class ObjectRenderer(private val vectorHighlights: Boolean = true) {
             paint.style = Paint.Style.STROKE
             if (item.kind == "CIRCLE" || item.kind == "ELLIPSE")
                 canvas.drawOval(item.transform.map(Bounds.of(item.points)).rect(), paint)
-            else
-                shapeSegments(item).forEach { (a, b) -> canvas.drawLine(a.x, a.y, b.x, b.y, paint) }
+            else {
+                val cached = shapeLines[item.id]
+                val lines =
+                    cached?.takeIf { it.first === item }?.second
+                        ?: shapeSegments(item).let { segments ->
+                            FloatArray(segments.size * 4)
+                                .apply {
+                                    segments.forEachIndexed { index, (a, b) ->
+                                        this[index * 4] = a.x
+                                        this[index * 4 + 1] = a.y
+                                        this[index * 4 + 2] = b.x
+                                        this[index * 4 + 3] = b.y
+                                    }
+                                }
+                                .also { shapeLines.put(item.id, item to it) }
+                        }
+                canvas.drawLines(lines, paint)
+            }
         }
         canvas.restore()
     }
