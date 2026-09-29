@@ -73,6 +73,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        InkWarmup.start()
         if (savedInstanceState == null) widgetRequest = WidgetAction.from(intent)
         enableEdgeToEdge()
         hideNavigationBar()
@@ -156,6 +157,7 @@ private fun Library(state: AppState) {
     var menu by remember { mutableStateOf(false) }
     var vaults by remember { mutableStateOf(false) }
     var githubSettings by remember { mutableStateOf(false) }
+    var version by remember { mutableStateOf(false) }
     val backup =
         rememberLauncherForActivityResult(
             ActivityResultContracts.CreateDocument("application/zip")
@@ -236,6 +238,13 @@ private fun Library(state: AppState) {
                         onClick = {
                             menu = false
                             restore.launch(arrayOf("application/zip", "application/octet-stream"))
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Dotnote version") },
+                        onClick = {
+                            menu = false
+                            version = true
                         },
                     )
                 }
@@ -449,6 +458,7 @@ private fun Library(state: AppState) {
         }
     }
     if (vaults) VaultManagerDialog(state) { vaults = false }
+    if (version) VersionDialog { version = false }
     if (githubSettings) GitHubSettings(state) { githubSettings = false }
     if (dialog != null)
         NameDialog("New folder", "") { value ->
@@ -648,6 +658,7 @@ private fun Editor(state: AppState) {
     var overflow by remember { mutableStateOf(false) }
     var pages by remember { mutableStateOf(false) }
     var help by remember { mutableStateOf(false) }
+    var version by remember { mutableStateOf(false) }
     var colorSlot by remember { mutableStateOf<Int?>(null) }
     var selectionColor by remember { mutableStateOf(false) }
     var exportRegion by remember { mutableStateOf<Bounds?>(null) }
@@ -804,6 +815,13 @@ private fun Editor(state: AppState) {
                         onClick = {
                             overflow = false
                             help = true
+                        },
+                    )
+                    DropdownMenuItem(
+                        text = { Text("Dotnote version") },
+                        onClick = {
+                            overflow = false
+                            version = true
                         },
                     )
                 }
@@ -989,6 +1007,7 @@ private fun Editor(state: AppState) {
             },
             confirmButton = { TextButton(onClick = { pages = false }) { Text("Close") } },
         )
+    if (version) VersionDialog { version = false }
     if (help)
         AlertDialog(
             onDismissRequest = { help = false },
@@ -1186,4 +1205,14 @@ private fun Stepper(label: String, value: Int, onChange: (Int) -> Unit) {
             Icon(Icons.Outlined.Add, "More $label")
         }
     }
+}
+
+@Composable
+private fun VersionDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Dotnote version") },
+        text = { Text("Dotnote ${BuildConfig.VERSION_NAME}\nBuild ${BuildConfig.VERSION_CODE}") },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
+    )
 }

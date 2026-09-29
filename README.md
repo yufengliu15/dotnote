@@ -2,13 +2,19 @@
 
 An offline, native Kotlin notebook for Android tablets. Built with Jetpack Compose, AndroidX Ink 1.0, Room, and Android's PDF renderer. Works offline without an account. Optional GitHub backups; no subscriptions or analytics.
 
+## 0.4.1 drawing update
+
+Highlighter drawing now appends live geometry in bounded chunks, avoids interactive path unions, and redraws separately from PDFs and finished pen strokes. Saving a stroke no longer builds a duplicate native mesh. Native Ink warms before writing; actual first-stroke latency still needs confirmation on the Galaxy Tab S6 Lite.
+
+Open either the library or note dropdown and tap **Dotnote version** to see the installed version and build number.
+
 ## Engineering documentation
 
 Start with [docs/README.md](docs/README.md) for the implementation guide: architecture, exact file formats, storage/recovery, drawing and PDF pipelines, user flows, widgets, GitHub backup protocol, build/test instructions, and known limitations. It includes a reading order and source map for agents continuing development.
 
 ## Install
 
-Install `dist/dotnote-0.4.0.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
+Install `dist/dotnote-0.4.1.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
 
 Install this APK over the previous Dotnote build to keep your library.
 

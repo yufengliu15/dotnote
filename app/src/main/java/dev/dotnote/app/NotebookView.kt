@@ -22,7 +22,10 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
     private val density = resources.displayMetrics.density
     private val ink = InProgressStrokesView(context)
     private var preparedPen = brush(state.color, state.strokeWidth, false)
-    private val renderer = ObjectRenderer()
+    private var preparedMarker = brush(state.color, state.strokeWidth * 5, true)
+    private var warmedSurface = false
+    private val renderer = ObjectRenderer(vectorHighlights = false)
+    private val highlightRenderer = ObjectRenderer(vectorHighlights = false)
     private val pageSource = PdfPageSource(state.store.assets)
     private val worker = Executors.newSingleThreadExecutor()
     private val cache =
@@ -36,8 +39,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
     // The live renderer may finish on a later frame. Persist actual inputs at pen-up,
     // and hide that durable stroke until the live renderer hands it over.
     private val handoffs = mutableMapOf<InProgressStrokeId, String>()
-    private var highlightPreview: Item? = null
-    private val recordedPoints = mutableListOf<Pt>()
+    private var highlightPreview: LiveHighlight? = null
     private var recordedInputs = MutableStrokeInputBatch()
     private var recordedBrush: Brush? = null
     private var inputStartTime = 0L
@@ -62,8 +64,31 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
     private val content =
         object : View(context) {
             override fun onDraw(canvas: Canvas) {
-                drawContent(canvas)
+                drawContent(canvas, background = true)
             }
+        }
+
+    private val highlights =
+        object : View(context) {
+            override fun onDraw(canvas: Canvas) {
+                val matrix = screenMatrix()
+                val visible = viewport()
+                canvas.save()
+                canvas.concat(matrix)
+                highlightRenderer.drawScene(
+                    canvas,
+                    state.document.items.filter {
+                        it.kind == "HIGHLIGHTER" && it.bounds.intersects(visible)
+                    },
+                    matrix,
+                    highlightPreview,
+                )
+                canvas.restore()
+            }
+        }
+    private val foreground =
+        object : View(context) {
+            override fun onDraw(canvas: Canvas) = drawContent(canvas, background = false)
         }
 
     init {
@@ -71,6 +96,8 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
         isFocusable = true
         contentDescription = "Note canvas. Write with the stylus, drag to pan, and pinch to zoom."
         addView(content, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(highlights, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+        addView(foreground, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(ink, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         ink.addFinishedStrokesListener(
             object : InProgressStrokesFinishedListener {
@@ -87,20 +114,48 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
         ink.eagerInit()
     }
 
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        if (w <= 0 || h <= 0 || warmedSurface) return
+        warmedSurface = true
+        // eagerInit creates the surface, but does not exercise brush/mesh rendering.
+        // A stroke outside the view warms that path; it never enters the document/history.
+        val transform = Matrix().apply { setTranslate(-10000f, -10000f) }
+        val input = StrokeInput().apply { update(0f, 0f, 0L, InputToolType.STYLUS, pressure = .8f) }
+        val id = ink.startStroke(input, currentPen(), transform)
+        ink.finishStroke(
+            StrokeInput().apply { update(10f, 0f, 8L, InputToolType.STYLUS, pressure = .8f) },
+            id,
+        )
+    }
+
     private fun currentPen(): Brush {
         if (preparedPen.colorIntArgb != state.color || preparedPen.size != state.strokeWidth)
             preparedPen = brush(state.color, state.strokeWidth, false)
         return preparedPen
     }
 
+    private fun currentMarker(): Brush {
+        if (
+            preparedMarker.colorIntArgb != ((state.color and 0x00ffffff) or 0x55000000) ||
+                preparedMarker.size != state.strokeWidth * 5
+        )
+            preparedMarker = brush(state.color, state.strokeWidth * 5, true)
+        return preparedMarker
+    }
+
     fun refresh() {
         currentPen()
+        currentMarker()
         content.invalidate()
+        highlights.invalidate()
+        foreground.invalidate()
     }
 
     private fun handOff(strokes: Map<InProgressStrokeId, Stroke>) {
         strokes.keys.forEach { handoffs.remove(it) }
-        content.invalidate()
+        if (strokes.isEmpty()) return
+        foreground.invalidate()
         ink.removeFinishedStrokes(strokes.keys)
     }
 
@@ -113,7 +168,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
             val elapsed = (time - inputStartTime).coerceAtLeast(0)
             if (elapsed <= lastInputTime) return
             val point = state.document.camera.world(Pt(x / density, y / density))
-            recordedPoints.add(point)
+            highlightPreview?.append(point)
             recordedInputs.add(
                 StrokeInput().apply {
                     update(
@@ -202,88 +257,95 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
             .map { it.bounds }
             .reduceOrNull { a, b -> a.union(b) }
 
-    private fun drawContent(canvas: Canvas) {
-        canvas.drawColor(0xfffafaf6.toInt())
+    private fun drawContent(canvas: Canvas, background: Boolean) {
+        if (background) canvas.drawColor(0xfffafaf6.toInt())
         val doc = state.document
         val visible = viewport()
         val matrix = screenMatrix()
         val z = doc.camera.zoom
         canvas.save()
         canvas.concat(matrix)
-        if (doc.dots) {
-            var spacing = 24f
-            while (spacing * z < 12) spacing *= 2
-            paint.color = 0xffcdd3ca.toInt()
-            paint.style = Paint.Style.FILL
-            var x = floor(visible.left / spacing) * spacing
-            while (x < visible.right) {
-                var y = floor(visible.top / spacing) * spacing
-                while (y < visible.bottom) {
-                    canvas.drawCircle(x, y, 1f / z, paint)
-                    y += spacing
-                }
-                x += spacing
-            }
-        }
-        doc.items
-            .filter { it.kind == "PDF" && it.bounds.intersects(visible) }
-            .forEach { item ->
-                val b = item.bounds
-                paint.color = Color.WHITE
-                canvas.drawRect(b.rect(), paint)
-                val desired = (b.width * z * density).toInt().coerceIn(128, 2048)
-                val target =
-                    when {
-                        desired <= 512 -> 512
-                        desired <= 1024 -> 1024
-                        else -> 2048
+        if (background) {
+            if (doc.dots) {
+                var spacing = 24f
+                while (spacing * z < 12) spacing *= 2
+                paint.color = 0xffcdd3ca.toInt()
+                paint.style = Paint.Style.FILL
+                var x = floor(visible.left / spacing) * spacing
+                while (x < visible.right) {
+                    var y = floor(visible.top / spacing) * spacing
+                    while (y < visible.bottom) {
+                        canvas.drawCircle(x, y, 1f / z, paint)
+                        y += spacing
                     }
-                val key = "${item.asset}:${item.page}:$target"
-                val bitmap = cache.get(key)
-                if (bitmap != null) {
-                    paint.isFilterBitmap = true
-                    canvas.drawBitmap(bitmap, null, b.rect(), paint)
-                } else {
-                    paint.color = 0xff72796f.toInt()
-                    paint.textSize = 16f
-                    canvas.drawText(
-                        if (key in failed) "Page unavailable" else "Loading page ${item.page+1}…",
-                        b.left + 24,
-                        b.top + 36,
-                        paint,
-                    )
-                    if (!disposed && key !in failed && pending.add(key))
-                        worker.execute {
-                            val result = runCatching { pageSource.render(item, target) }
-                            post {
-                                pending.remove(key)
-                                if (!disposed) {
-                                    result.fold(
-                                        { cache.put(key, it) },
-                                        {
-                                            failed.add(key)
-                                            state.message =
-                                                "A PDF page could not be read: ${it.message}"
-                                        },
-                                    )
-                                    content.invalidate()
+                    x += spacing
+                }
+            }
+            doc.items
+                .filter { it.kind == "PDF" && it.bounds.intersects(visible) }
+                .forEach { item ->
+                    val b = item.bounds
+                    paint.color = Color.WHITE
+                    canvas.drawRect(b.rect(), paint)
+                    val desired = (b.width * z * density).toInt().coerceIn(128, 2048)
+                    val target =
+                        when {
+                            desired <= 512 -> 512
+                            desired <= 1024 -> 1024
+                            else -> 2048
+                        }
+                    val key = "${item.asset}:${item.page}:$target"
+                    val bitmap = cache.get(key)
+                    if (bitmap != null) {
+                        paint.isFilterBitmap = true
+                        canvas.drawBitmap(bitmap, null, b.rect(), paint)
+                    } else {
+                        paint.color = 0xff72796f.toInt()
+                        paint.textSize = 16f
+                        canvas.drawText(
+                            if (key in failed) "Page unavailable"
+                            else "Loading page ${item.page+1}…",
+                            b.left + 24,
+                            b.top + 36,
+                            paint,
+                        )
+                        if (!disposed && key !in failed && pending.add(key))
+                            worker.execute {
+                                val result = runCatching { pageSource.render(item, target) }
+                                post {
+                                    pending.remove(key)
+                                    if (!disposed) {
+                                        result.fold(
+                                            { cache.put(key, it) },
+                                            {
+                                                failed.add(key)
+                                                state.message =
+                                                    "A PDF page could not be read: ${it.message}"
+                                            },
+                                        )
+                                        content.invalidate()
+                                    }
                                 }
                             }
-                        }
+                    }
+                    paint.style = Paint.Style.STROKE
+                    paint.color = 0xffdadfd4.toInt()
+                    paint.strokeWidth = 1f / z
+                    canvas.drawRect(b.rect(), paint)
+                    paint.style = Paint.Style.FILL
                 }
-                paint.style = Paint.Style.STROKE
-                paint.color = 0xffdadfd4.toInt()
-                paint.strokeWidth = 1f / z
-                canvas.drawRect(b.rect(), paint)
-                paint.style = Paint.Style.FILL
-            }
+            canvas.restore()
+            return
+        }
         renderer.drawScene(
             canvas,
             doc.items.filter {
-                it.kind != "PDF" && it.id !in handoffs.values && it.bounds.intersects(visible)
+                it.kind != "PDF" &&
+                    it.kind != "HIGHLIGHTER" &&
+                    it.id !in handoffs.values &&
+                    it.bounds.intersects(visible)
             },
             matrix,
-            highlightPreview,
         )
         shape?.let { renderer.draw(canvas, it, matrix) }
         if (lasso.size > 1) {
@@ -396,25 +458,16 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
                 val inverse = Matrix()
                 screenMatrix().invert(inverse)
                 val high = activeTool == Tool.HIGHLIGHTER
-                recordedBrush =
-                    if (high) brush(state.color, state.strokeWidth * 5, true) else currentPen()
+                recordedBrush = if (high) currentMarker() else currentPen()
                 recordedInputs = MutableStrokeInputBatch()
-                recordedPoints.clear()
                 inputStartTime = e.eventTime
                 lastInputTime = -1
                 inputTool =
                     if (e.getToolType(index) == MotionEvent.TOOL_TYPE_FINGER) InputToolType.TOUCH
                     else InputToolType.STYLUS
+                if (high) highlightPreview = LiveHighlight(state.color, state.strokeWidth * 5)
                 recordInputs(e, index)
-                if (high)
-                    highlightPreview =
-                        Item(
-                            kind = "HIGHLIGHTER",
-                            color = state.color,
-                            width = state.strokeWidth * 5,
-                            points = recordedPoints.toList(),
-                        )
-                else activeStroke = ink.startStroke(e, pointer, recordedBrush!!, inverse)
+                if (!high) activeStroke = ink.startStroke(e, pointer, recordedBrush!!, inverse)
             }
             Tool.ERASER -> erase(start, start)
             Tool.LASSO -> {
@@ -465,16 +518,15 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
         val p = world(e, i)
         if (highlightPreview != null) {
             recordInputs(e, i)
-            highlightPreview = highlightPreview!!.copy(points = recordedPoints.toList())
             if (released) {
                 state.commit(
-                    state.document.items + strokeItem(Stroke(recordedBrush!!, recordedInputs), true)
+                    state.document.items + strokeItem(recordedInputs, recordedBrush!!, true)
                 )
                 highlightPreview = null
                 pointer = -1
                 gestureBefore = null
             }
-            refresh()
+            if (released) refresh() else highlights.postInvalidateOnAnimation()
             return
         }
         activeStroke?.let { id ->
@@ -482,10 +534,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
             recordInputs(e, i)
             if (released) {
                 val item =
-                    strokeItem(
-                        Stroke(recordedBrush!!, recordedInputs),
-                        activeTool == Tool.HIGHLIGHTER,
-                    )
+                    strokeItem(recordedInputs, recordedBrush!!, activeTool == Tool.HIGHLIGHTER)
                 handoffs[id] = item.id
                 state.commit(state.document.items + item)
                 ink.finishStroke(e, pointer, id)
@@ -610,7 +659,6 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
         }
         activeStroke = null
         highlightPreview = null
-        recordedPoints.clear()
         gestureBefore?.let(state::preview)
         gestureBefore = null
         shape = null

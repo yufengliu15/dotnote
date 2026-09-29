@@ -56,7 +56,7 @@ The bottom-right zoom indicator shows saved camera zoom and a “Fit all content
 
 The save label is local status. It does not indicate successful remote backup. Palette editing affects the current vault's settings and is not part of drawing undo.
 
-Editor overflow exposes Import PDF, PDF page navigator, Export entire note as PDF, Export visible area as PDF, Writing settings and How to use Dotnote. The navigator lists imported page items, using page number and an asset prefix; tapping frames that page. PDF page operations and export semantics are described in [PDFs and export](pdf-and-export.md).
+Editor overflow exposes Import PDF, PDF page navigator, Export entire note as PDF, Export visible area as PDF, Writing settings, How to use Dotnote, and Dotnote version. Both library and editor version buttons open a dialog showing the installed build version and code. The navigator lists imported page items, using page number and an asset prefix; tapping frames that page. PDF page operations and export semantics are described in [PDFs and export](pdf-and-export.md).
 
 ## Writing settings and color picker
 

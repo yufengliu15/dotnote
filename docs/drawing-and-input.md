@@ -4,9 +4,9 @@
 
 ## Two rendering paths, one saved model
 
-`NotebookView` is a `FrameLayout` containing a normal content View and an AndroidX Ink `InProgressStrokesView` above it. Completed content is rendered by `ObjectRenderer`. The native overlay gives pen strokes low-latency live display; completed strokes become ordinary immutable `Item`s in `AppState.document`.
+`NotebookView` is a `FrameLayout` containing separate background, highlighter, and foreground Views with an AndroidX Ink `InProgressStrokesView` above them. Completed content is rendered by `ObjectRenderer`. The native overlay gives pen strokes low-latency live display; completed strokes become ordinary immutable `Item`s in `AppState.document`.
 
-Pen and marker brush families are lazily cached stock AndroidX families (`pressurePen`, `highlighter`). Brush epsilon is `0.1`. The pen brush is prepared during view construction and refreshed when color/width changes; `ink.eagerInit()` runs on attachment. See [startup details](widgets-and-ink-startup.md).
+Pen and marker brush families are lazily cached stock AndroidX families (`pressurePen`, `highlighter`). Brush epsilon is `0.1`. Both brushes are prepared during view construction and refreshed when color/width changes; `ink.eagerInit()` runs on attachment. Native stroke preparation starts asynchronously at activity launch, and an offscreen stroke exercises the authoring surface after its first layout. See [startup details](widgets-and-ink-startup.md).
 
 ## Pointer arbitration
 
@@ -28,7 +28,7 @@ The view intercepts its touch stream and requests the parent not intercept it. T
 1. At begin, settle already-finished native strokes, capture the pre-gesture item list, world start point and active tool, request unbuffered dispatch, and record the real down event.
 2. Build an inverse world-to-screen matrix and start native live authoring with the prepared brush.
 3. On movement, send the real MotionEvent plus optional `MotionEventPredictor` prediction to the native overlay. Recycle predicted events after use. Independently append real historical/current samples to a `MutableStrokeInputBatch`.
-4. On owned pointer-up, create a `Stroke` from the real recorded batch, convert it to an `Item`, register native-stroke-ID → item-ID handoff, and **commit/save immediately**. Then tell the native authoring view to finish.
+4. On owned pointer-up, encode the real recorded batch directly into an `Item` (without constructing another native mesh), register native-stroke-ID → item-ID handoff, and **commit/save immediately**. Then tell the native authoring view to finish.
 5. Until native rendering announces completion, hide that item from completed scene rendering. The live layer still displays it, avoiding a double-dark stroke.
 6. The finished-strokes listener removes the handoff mapping, invalidates the completed scene and removes finished native strokes. `settle()` also drains already-finished strokes before relevant UI actions.
 
@@ -40,20 +40,15 @@ The native stroke cache holds 400 entries keyed by item ID, color and width. Tra
 
 ## Constant-opacity highlighter
 
-Highlighter uses five times the current pen width. It does **not** paint repeated translucent native strokes onto the canvas. Its live preview is a regular highlighter Item built from real recorded points; at pointer-up it creates the saved input-backed Item through the same serialization helper.
+Highlighter uses five times the current pen width. Its live preview is a mutable `LiveHighlight`: real input points append to paths capped at 128 segments each. No full point-list copy, Item bounds calculation, filled-outline construction, or boolean path union runs on every move. Pointer-up encodes the recorded inputs directly; it does not tessellate a native highlighter stroke just to save it.
 
-`ObjectRenderer.drawScene`:
+The interactive `ObjectRenderer(vectorHighlights = false)` caches finished outlines and groups them by color. It draws these opaque outlines and the live paths inside **one** `saveLayerAlpha(..., 85)` layer, producing approximately one-third opacity even over repeated highlights. Pen and shapes remain above that layer. Color groups retain last-occurrence ordering, with the live color group on top.
 
-1. Collects highlighter items and creates filled outlines from their point polylines using round cap/join stroke geometry, with a circle for a single point.
-2. Applies each item's transform and unions outlines per color using `Path.Op.UNION` (falling back to `addPath` if union fails).
-3. Combines the live outline with the appropriate color group without mutating the cached finished group.
-4. Paints each group as opaque color inside **one** `saveLayerAlpha(..., 85)` layer.
-5. Restores that layer once, giving approximately one-third opacity regardless of repeat coverage.
-6. Draws pen and shape ink above the marker layer.
+Only the highlighter View invalidates on live moves, once per animation frame. Android can reuse the background/PDF and finished pen/shape display lists. Document, camera, selection, and tool changes refresh the relevant editor layers normally.
 
-Same-color overlaps do not accumulate darkness, including interior antialiased seams addressed by the union operation. Different colors replace one another in that shared layer rather than mixing extra alpha. Groups are ordered by each color's last occurrence in the current item list, so the most recently occurring color wins at overlap; this is color-group ordering, not per-stroke chronological compositing. A live marker's group moves to the top.
+PDF export retains normalized per-color `Path.Op.UNION` outlines to avoid vector antialiasing seams; expensive unions are kept out of interactive drawing. Antialiased edge coverage can differ slightly between the screen's opaque paths and the normalized PDF outlines, but overlapping interiors remain one-third opaque. Do not give each highlight its own translucent layer: that would accumulate opacity.
 
-Marker geometry uses constant-width point outlines, not the native pressure brush mesh, even though its saved inputs retain pressure. Finished outline cache capacity is 400, keyed by ID with item identity checks; grouped outlines are rebuilt when the highlight item list changes. The same renderer is used for PDF exports. Do not replace it with independent `draw(item)` calls for each marker: that would reintroduce accumulation.
+Marker geometry uses constant-width point outlines, not a pressure-dependent mesh, while saved input data still retains pressure. The finished-outline LRU holds 400 entries with item identity checks. Group caches are rebuilt when the visible highlighter list changes. Scenes are still scanned for visibility; very large documents require physical-device profiling.
 
 ## Shapes and hit testing
 
@@ -99,4 +94,4 @@ Paint order is paper → dots → visible PDF pages → highlighter layer → pe
 
 `ACTION_CANCEL` restores the captured scene without committing partial edits. A completed pen save does not wait for asynchronous display handoff. However, editor shutdown or process death during a still-active, unfinished gesture is not a guaranteed recovery of that gesture. Save queues and lifecycle callbacks do not make unsaved RAM durable.
 
-Relevant tests are `DocumentTest`, `GesturePipelineTest`, `NativePipelineTest`, `EditorUpdateTest`, and `InkStartupTest`; see the [test guide](build-test-release.md) for their precise scope and hardware limitations.
+Relevant tests are `DocumentTest`, `GesturePipelineTest`, `NativePipelineTest`, `EditorUpdateTest`, `HighlighterPerformanceTest`, and `InkStartupTest`; see the [test guide](build-test-release.md) for their precise scope and hardware limitations.

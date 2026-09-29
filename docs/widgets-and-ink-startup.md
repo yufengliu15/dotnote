@@ -90,17 +90,18 @@ Renaming preserves local ID, portable ID, files, index name, repository binding,
 
 ## First-stroke startup work
 
-The earlier implementation let the first pen event trigger native authoring setup. Current code moves the setup earlier:
+Version 0.4.1 extends the earlier brush caching and `eagerInit()` setup:
 
-- `NotebookView` creates a prepared pen brush during construction.
-- `onAttachedToWindow` calls `InProgressStrokesView.eagerInit()` to initialize renderer/surface before pen-down.
-- Stock brush families are cached in `Rendering.kt`.
-- `refresh()` updates the prepared brush when color/width changes; begin checks it again before use.
-- `AppState.openNow` decodes the saved document on IO rather than the main thread.
+- `InkWarmup.start()` runs once per process from activity creation. A background thread loads native Ink, builds a real pressure stroke, and draws into a tiny disposable bitmap. It creates no document data.
+- `NotebookView` prepares both pen and marker brushes. `onAttachedToWindow` calls `InProgressStrokesView.eagerInit()`.
+- At the first nonzero layout, an offscreen authoring stroke exercises the per-view native pipeline. It is removed by the normal completion listener and never committed, saved, or added to undo history.
+- Real input is still accepted immediately; no warmup timer or blocking wait gates drawing.
+- Pen/highlighter saves encode recorded inputs directly instead of generating a duplicate mesh at pen-up.
+- Note decoding remains on IO in `AppState.openNow`.
 
-There is no deliberate one-second input timer in the production pen path, forced software renderer, simplified fallback stroke, or disabled pressure. Current preview and durable stroke both still use the chosen stock pen.
+`InkStartupTest.firstPenStrokeIsVisibleBeforePenUp` now checks a screenshot while the first stroke is **still active**, before `ACTION_UP`, with a 500 ms visibility budget. The 0.4.0 test checked after pen-up and could pass even if live ink was delayed. These tests measure synthetic emulator input and screenshot observation, not physical S Pen latency or the entire note-open-to-ready interval. See the current [validation record](../VALIDATION.md) for measurements.
 
-`InkStartupTest.firstPenStrokeRendersWithoutOneSecondStartupPause` starts synthetic drawing once the canvas is laid out, times input dispatch and checks visible ink in a screenshot before one second. The recorded final emulator result was **48 ms input dispatch / 236 ms visible ink**. This does not measure the full note-open-to-ready interval, physical digitizer latency or Lenovo firmware behavior.
+The user still observed first-writing delay on a Galaxy Tab S6 Lite with 0.4.0. The new warmup is a mitigation pending physical-device verification, not proof that the device issue is resolved.
 
 For the emulator-only native teardown crash, the test drains Ink rendering through `ink.sync(2, TimeUnit.SECONDS)` before destroying its view. That happens after measurement and is test cleanup, not a production startup workaround. See [build/test notes](build-test-release.md).
 

@@ -36,25 +36,119 @@ fun brush(color: Int, width: Float, highlight: Boolean): Brush =
         .1f,
     )
 
-fun strokeItem(stroke: Stroke, highlight: Boolean): Item {
-    val bytes = ByteArrayOutputStream().also { stroke.inputs.encode(it) }.toByteArray()
+/** Load native Ink and build a real pressure stroke before the editor receives input. */
+object InkWarmup {
+    private val started = java.util.concurrent.atomic.AtomicBoolean()
+
+    fun start() {
+        if (!started.compareAndSet(false, true)) return
+        Thread(
+                {
+                    runCatching {
+                        val inputs =
+                            androidx.ink.strokes.MutableStrokeInputBatch().apply {
+                                repeat(3) { step ->
+                                    add(
+                                        androidx.ink.strokes.StrokeInput().apply {
+                                            update(
+                                                4f + step * 4f,
+                                                8f,
+                                                step * 8L,
+                                                androidx.ink.brush.InputToolType.STYLUS,
+                                                pressure = .8f,
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                        val stroke =
+                            androidx.ink.strokes
+                                .InProgressStroke()
+                                .apply {
+                                    start(brush(Color.BLACK, 3f, false))
+                                    enqueueInputs(
+                                        inputs,
+                                        androidx.ink.strokes.MutableStrokeInputBatch(),
+                                    )
+                                    finishInput()
+                                    updateShape()
+                                }
+                                .toImmutable()
+                        val bitmap = Bitmap.createBitmap(24, 24, Bitmap.Config.ARGB_8888)
+                        try {
+                            CanvasStrokeRenderer.create().draw(Canvas(bitmap), stroke, Matrix())
+                            brush(Color.YELLOW, 15f, true)
+                        } finally {
+                            bitmap.recycle()
+                        }
+                    }
+                },
+                "Dotnote-InkWarmup",
+            )
+            .start()
+    }
+}
+
+fun strokeItem(stroke: Stroke, highlight: Boolean): Item =
+    strokeItem(stroke.inputs, stroke.brush, highlight)
+
+// Saving input data does not require constructing/tessellating a second native stroke.
+fun strokeItem(inputs: StrokeInputBatch, brush: Brush, highlight: Boolean): Item {
+    val bytes = ByteArrayOutputStream().also { inputs.encode(it) }.toByteArray()
     return Item(
         kind = if (highlight) "HIGHLIGHTER" else "PEN",
-        color = stroke.brush.colorIntArgb or 0xff000000.toInt(),
-        width = stroke.brush.size,
+        color = brush.colorIntArgb or 0xff000000.toInt(),
+        width = brush.size,
         points =
-            (0 until stroke.inputs.size).map {
-                val p = stroke.inputs[it]
+            (0 until inputs.size).map {
+                val p = inputs[it]
                 Pt(p.x, p.y)
             },
         ink = Base64.getEncoder().encodeToString(bytes),
     )
 }
 
-class ObjectRenderer {
+/** Mutable live geometry: append inputs without copying/rebounding the whole stroke. */
+class LiveHighlight(val color: Int, val width: Float) {
+    private val paths = mutableListOf<Path>()
+    private var current = Path()
+    private var count = 0
+    private var first: Pt? = null
+
+    fun append(point: Pt) {
+        if (first == null) {
+            first = point
+            current.moveTo(point.x, point.y)
+            paths.add(current)
+        } else {
+            current.lineTo(point.x, point.y)
+            if (++count == 128) {
+                // Finished chunks stay unchanged, avoiding ever-growing path tessellation.
+                current = Path().apply { moveTo(point.x, point.y) }
+                paths.add(current)
+                count = 0
+            }
+        }
+    }
+
+    fun draw(canvas: Canvas, paint: Paint) {
+        paint.color = color or 0xff000000.toInt()
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = width
+        paths.forEach { canvas.drawPath(it, paint) }
+        // A down event alone must produce visible ink too.
+        first?.let {
+            paint.style = Paint.Style.FILL
+            canvas.drawCircle(it.x, it.y, width / 2, paint)
+        }
+    }
+}
+
+class ObjectRenderer(private val vectorHighlights: Boolean = true) {
     private var cachedHighlights: List<Item> = emptyList()
     private val cachedHighlightGroups = linkedMapOf<Int, Path>()
-    private val inkRenderer = CanvasStrokeRenderer.create()
+    private val interactiveGroups = linkedMapOf<Int, MutableList<Path>>()
+    private val inkRenderer by lazy { CanvasStrokeRenderer.create() }
     private val highlightPaths = object : LruCache<String, Pair<Item, Path>>(400) {}
     private val strokes = object : LruCache<String, Stroke>(400) {}
     private val paint =
@@ -69,33 +163,50 @@ class ObjectRenderer {
         canvas: Canvas,
         items: List<Item>,
         worldToScreen: Matrix,
-        liveHighlight: Item? = null,
+        liveHighlight: LiveHighlight? = null,
     ) {
         val highlights = items.filter { it.kind == "HIGHLIGHTER" }
         if (cachedHighlights != highlights) {
             cachedHighlightGroups.clear()
+            interactiveGroups.clear()
             highlights.forEach { item ->
-                val path = cachedHighlightGroups.remove(item.color) ?: Path()
-                mergeOutline(path, highlightOutline(item))
-                cachedHighlightGroups[item.color] = path
+                if (vectorHighlights) {
+                    val path = cachedHighlightGroups.remove(item.color) ?: Path()
+                    mergeOutline(path, highlightOutline(item))
+                    cachedHighlightGroups[item.color] = path
+                } else {
+                    val paths = interactiveGroups.remove(item.color) ?: mutableListOf()
+                    paths.add(highlightOutline(item))
+                    interactiveGroups[item.color] = paths
+                }
             }
             cachedHighlights = highlights
         }
         if (highlights.isNotEmpty() || liveHighlight != null) {
-            val paths = LinkedHashMap(cachedHighlightGroups)
-            liveHighlight?.let { item ->
-                val path = paths.remove(item.color)?.let(::Path) ?: Path()
-                mergeOutline(path, highlightOutline(item))
-                paths[item.color] = path
-            }
             val layer = canvas.saveLayerAlpha(null, 85)
-            // Union removes internal edges even in PDF renderers. Cached finished
-            // outlines are reused while only the live outline changes on each frame.
             paint.style = Paint.Style.FILL
-            paths.forEach { (color, path) ->
-                paint.color = color or 0xff000000.toInt()
-                canvas.drawPath(path, paint)
+            if (vectorHighlights) {
+                // PDF output needs normalized outlines to avoid antialiasing seams.
+                cachedHighlightGroups.forEach { (color, path) ->
+                    paint.color = color or 0xff000000.toInt()
+                    canvas.drawPath(path, paint)
+                }
+            } else {
+                // Opaque strokes share ONE translucent layer. No boolean path operations
+                // are needed in the interactive renderer, including during pen-up.
+                fun drawGroup(color: Int, paths: List<Path>) {
+                    paint.color = color or 0xff000000.toInt()
+                    paths.forEach { canvas.drawPath(it, paint) }
+                }
+                interactiveGroups.forEach { (color, paths) ->
+                    if (color != liveHighlight?.color) drawGroup(color, paths)
+                }
+                // Keep the existing color-group ordering in sync with vector exports.
+                liveHighlight?.let { live ->
+                    interactiveGroups[live.color]?.let { drawGroup(live.color, it) }
+                }
             }
+            liveHighlight?.draw(canvas, paint)
             canvas.restoreToCount(layer)
         }
         items

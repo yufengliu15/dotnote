@@ -41,7 +41,7 @@ class InkStartupTest {
     }
 
     @Test
-    fun firstPenStrokeRendersWithoutOneSecondStartupPause() {
+    fun firstPenStrokeIsVisibleBeforePenUp() {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             lateinit var state: AppState
             var view: NotebookView? = null
@@ -60,55 +60,64 @@ class InkStartupTest {
                 state.note != null && !state.busy && (view?.width ?: 0) > 0
             }
             val id = state.note!!.id
-            try {
-                val location = IntArray(2)
-                var density = 1f
-                val began = SystemClock.uptimeMillis()
-                scenario.onActivity {
-                    val v = view!!
-                    v.getLocationOnScreen(location)
-                    density = v.resources.displayMetrics.density
-                    for (step in 0..10) {
-                        val props =
+            fun send(step: Int, action: Int, began: Long) {
+                val v = view!!
+                val density = v.resources.displayMetrics.density
+                val event =
+                    MotionEvent.obtain(
+                        began,
+                        began + step * 5L,
+                        action,
+                        1,
+                        arrayOf(
                             MotionEvent.PointerProperties().apply {
                                 this.id = 0
                                 toolType = MotionEvent.TOOL_TYPE_STYLUS
                             }
-                        val coords =
+                        ),
+                        arrayOf(
                             MotionEvent.PointerCoords().apply {
                                 x = (180f + step * 10f) * density
                                 y = 140f * density
                                 pressure = .8f
                             }
-                        val event =
-                            MotionEvent.obtain(
-                                began,
-                                began + step * 5L,
-                                when (step) {
-                                    0 -> MotionEvent.ACTION_DOWN
-                                    10 -> MotionEvent.ACTION_UP
-                                    else -> MotionEvent.ACTION_MOVE
-                                },
-                                1,
-                                arrayOf(props),
-                                arrayOf(coords),
-                                0,
-                                0,
-                                1f,
-                                1f,
-                                0,
-                                0,
-                                InputDevice.SOURCE_STYLUS,
-                                0,
-                            )
-                        v.dispatchTouchEvent(event)
-                        event.recycle()
+                        ),
+                        0,
+                        0,
+                        1f,
+                        1f,
+                        0,
+                        0,
+                        InputDevice.SOURCE_STYLUS,
+                        0,
+                    )
+                v.dispatchTouchEvent(event)
+                event.recycle()
+            }
+            var began = 0L
+            try {
+                // Surface/native warmup must never create a phantom document stroke.
+                assertTrue(state.document.items.isEmpty())
+                val location = IntArray(2)
+                var density = 1f
+                began = SystemClock.uptimeMillis()
+                scenario.onActivity {
+                    val v = view!!
+                    v.getLocationOnScreen(location)
+                    density = v.resources.displayMetrics.density
+                    for (step in 0..9) {
+                        send(
+                            step,
+                            if (step == 0) MotionEvent.ACTION_DOWN else MotionEvent.ACTION_MOVE,
+                            began,
+                        )
                     }
                 }
+
                 val dispatchMs = SystemClock.uptimeMillis() - began
-                assertTrue("First stroke blocked input for $dispatchMs ms", dispatchMs < 500)
+                assertTrue("First stroke blocked input for $dispatchMs ms", dispatchMs < 250)
                 var visible = false
-                while (!visible && SystemClock.uptimeMillis() - began < 850) {
+                while (!visible && SystemClock.uptimeMillis() - began < 500) {
                     val shot = instrumentation.uiAutomation.takeScreenshot()
                     if (shot != null) {
                         val y = location[1] + (140 * density).toInt()
@@ -135,14 +144,19 @@ class InkStartupTest {
                     Bundle().apply {
                         putString(
                             "stream",
-                            "First stroke input: $dispatchMs ms; visible: $visibleMs ms\n",
+                            "First wet stroke input: $dispatchMs ms; visible: $visibleMs ms\n",
                         )
                     },
                 )
                 assertTrue(
-                    "First stroke was not visible within 850 ms",
-                    visible && visibleMs < 1000,
+                    "First stroke was not visible while the pen was down within 500 ms",
+                    visible && visibleMs < 500,
                 )
+                assertTrue(
+                    "Ink must be visible before committing on pen-up",
+                    state.document.items.isEmpty(),
+                )
+                scenario.onActivity { send(10, MotionEvent.ACTION_UP, began) }
                 await { state.saved }
                 assertEquals(1, state.document.items.size)
                 assertEquals("PEN", state.document.items.single().kind)
@@ -150,6 +164,7 @@ class InkStartupTest {
                 // Drain native rendering before destroying the emulator's drawing surface.
                 // This is test cleanup after the latency measurement, never a production delay.
                 scenario.onActivity {
+                    send(11, MotionEvent.ACTION_CANCEL, began)
                     val ink =
                         (0 until view!!.childCount)
                             .map { view!!.getChildAt(it) }

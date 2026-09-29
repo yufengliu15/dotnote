@@ -14,7 +14,7 @@ Use a full JDK 17 and an Android SDK with platform 36 plus compatible build tool
 | KSP | 2.2.21-2.0.4 |
 | Java/Kotlin bytecode | 17 |
 | Package / namespace | `dev.dotnote.app` |
-| App version | code 4, name `0.4.0` |
+| App version | code 5, name `0.4.1` |
 | Android support | minimum API 29 (Android 10), compile/target API 36 (Android 16) |
 | Compose BOM | 2025.12.00 |
 | Activity Compose | 1.12.1 |
@@ -64,7 +64,7 @@ Tests are in [`app/src/test/java/dev/dotnote/app/`](../app/src/test/java/dev/dot
 
 These are ordinary JUnit tests with a JVM `org.json` dependency. Native Android Ink rendering, actual Room/WorkManager, Views and PDF APIs require instrumentation; a passing JVM suite cannot establish those behaviors.
 
-## Test inventory: 18 Android tests
+## Test inventory: 20 Android tests
 
 Tests are in [`app/src/androidTest/java/dev/dotnote/app/`](../app/src/androidTest/java/dev/dotnote/app/).
 
@@ -76,7 +76,8 @@ Tests are in [`app/src/androidTest/java/dev/dotnote/app/`](../app/src/androidTes
 | `VaultPipelineTest` | 4 | `filesRebuildIndexAndPreserveMovedNotes`; `interruptedFileTransactionReplaysBeforeReading`; `androidFilesProviderImportsNestedVaultWithoutChangingSource`; `gitBackupRestoreNoChangeAndConflictRecovery` |
 | `VaultLifecycleTest` | 3 | `lastEditReplacesScheduledWorkAndKeepsNetworkPreference`; `migrationCopiesLegacyNotesAndPdfsWithoutDeletingOriginals`; `vaultSwitchFlushesNotesAndKeepsSeparatePalettes` |
 | `WidgetPipelineTest` | 4 | `vaultRenamePreservesIdentityAndMarksBackupPending`; `openingHistoryPersistsAndRenameMoveDeleteRefreshIt`; `resizedRemoteViewsFitMoreNotesAndKeepDistinctLaunchTargets`; `widgetLaunchCreatesInSelectedFolderAndOpensAcrossVaults` |
-| `InkStartupTest` | 1 | `firstPenStrokeRendersWithoutOneSecondStartupPause`: dispatch timing and screenshot visibility once editor layout is ready |
+| `HighlighterPerformanceTest` | 2 | Live overlap/chunk opacity, pen layering, reopen/cancel rendering; 2,400-point live-stroke software frame budget |
+| `InkStartupTest` | 1 | `firstPenStrokeIsVisibleBeforePenUp`: first-stroke dispatch and screenshot visibility before ACTION_UP, plus no phantom warmup item |
 
 Git tests use an injectable deterministic API that models blobs, trees, commits and branch refs. It covers lost final responses and remote conflicts, but no real account consent or private repository. WorkManager tests inspect real queued jobs; they do not simulate six hours of Doze/OEM battery policies. Android Files tests use the app's provider, not every external provider. Tests that create real app UI/preferences should run on a disposable emulator/test profile, not the user's only notebook installation.
 
@@ -100,14 +101,14 @@ adb shell setprop debug.hwui.renderer skiagl
 
 Apply that only when reproducing the documented emulator setup, before launching the test app. Dotnote production code does not force that backend. Separate-process passing results must not be represented as a passing all-in-one default `connectedDebugAndroidTest` run. Startup test cleanup drains native rendering after measurement to avoid the known teardown crash.
 
-The recorded release result is 14/14 JVM, 18/18 Android, debug/test APK packaging passed, lint 0 errors / 23 warnings. Warnings include optional KTX suggestions, pinned-version notices and the custom-canvas accessibility suggestion. See the root validation record for interpretation, not just totals.
+The historical 0.4.0 release result was 14/14 JVM and 18/18 Android. For 0.4.1, run the focused drawing checks below; see `VALIDATION.md` for the actual run results rather than assuming every historical suite was rerun. Warnings include optional KTX suggestions, pinned-version notices and the custom-canvas accessibility suggestion. See the root validation record for interpretation, not just totals.
 
 ## Choosing checks for a change
 
 | Change | Minimum relevant verification |
 | --- | --- |
 | Model/codec/geometry | JVM `DocumentTest`; native roundtrip if ink fields change |
-| Input/brush/rendering | Native + gesture + editor + startup tests; physical stylus acceptance |
+| Input/brush/rendering | Native + gesture + editor + startup + highlighter performance tests; physical stylus acceptance |
 | PDF import/export | Native pipeline and exported-highlight test; real multi-page document/provider |
 | File layout/transactions/transfer | Vault pipeline + migration/switch lifecycle; malformed/interrupted cases |
 | Git/auth/scheduling | Vault rules + pipeline + lifecycle; live account/network checks only when authorized/available |

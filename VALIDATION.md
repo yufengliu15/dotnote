@@ -1,4 +1,26 @@
-# Verification · 0.4.0
+# Verification · 0.4.1 (build 5)
+
+Validated September 29, 2026 on the existing Android 16 / API 36 ARM64 tablet emulator (1280 × 800). Physical Galaxy Tab S6 Lite performance is **not yet verified**.
+
+- Kotlin compilation, debug APK, and instrumentation APK: passed.
+- JVM tests: **14 passed**, 0 failures.
+- Focused Android tests: **9 passed** in separate instrumentation processes: InkStartupTest (1), HighlighterPerformanceTest (2), NativePipelineTest (2), EditorUpdateTest (3), GesturePipelineTest (1). Storage, Git, and widget suites were not rerun for this drawing update.
+- Android lint: **0 errors, 25 warnings**; includes optional KTX suggestions and the existing custom-canvas accessibility warning.
+- First stroke: **35 ms dispatch / 215 ms screenshot-observed visibility**, while the pen was still down; 500 ms visibility budget. No warmup strokes entered the document. The earlier candidate measured 136 / 475 ms, illustrating emulator/timing variation.
+- Highlighter: **2,400 live points over 60 existing 100-point strokes**, 200 software bitmap frames: median **4.735 ms**, p95 **17.574 ms**. The earlier candidate measured 4.546 / 5.344 ms. These are synthetic frame costs, not a before/after comparison or physical input-to-display latency.
+- Verified live overlap and chunk interiors remain one-third opaque; pen stays above highlights; saved/reopened markers render; cancelled previews leave no ink. Existing exported-PDF opacity, pressure ink, 200% zoom, undo/redo, and save/reopen tests pass.
+- Library dropdown → Dotnote version was opened and visually inspected: **Dotnote 0.4.1 / Build 5**. The same dialog is available in the editor dropdown.
+- APK signatures verify, and the signing certificate matches `dist/dotnote-0.4.0.apk`. Package remains `dev.dotnote.app`; version code increases from 4 to 5. Install over the prior build, without uninstalling or clearing app data.
+
+The highlighter hot path no longer copies the full stroke, recalculates its Item bounds, unions geometry on each frame, or redraws PDFs/finished pen ink on each move. Completed highlights use cached outlines; PDF export retains normalized unions. Native initialization starts at activity launch and an offscreen stroke warms each new authoring surface. Real drawing is never gated on warmup completion.
+
+The S6 Lite first-writing delay may include device-specific input or graphics behavior. The new warmup and stronger test do not prove that report is resolved. Check cold and warm note opens, long highlights, large PDFs, and the first versus subsequent strokes on the actual tablet. Widget discovery and the previously deferred GitHub issue are unchanged.
+
+Build/test commands are in [docs/build-test-release.md](docs/build-test-release.md). Final emulator run used the documented `skiagl` setting; production does not force a renderer. Startup cleanup synchronizes Ink after measurement, not during production input.
+
+---
+
+# Historical verification · 0.4.0
 
 Validated on Android 16 / API 36 ARM64 tablet emulator, 1280 × 800.
 
