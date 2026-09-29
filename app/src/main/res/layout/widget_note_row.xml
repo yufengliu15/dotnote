@@ -1,0 +1,10 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="56dp" android:orientation="horizontal" android:baselineAligned="false">
+  <LinearLayout android:id="@+id/widget_first" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:gravity="center_vertical" android:paddingEnd="8dp" android:paddingStart="0dp" android:orientation="vertical">
+    <TextView android:id="@+id/widget_first_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="14sp" android:textStyle="bold" android:textColor="#25342E" android:maxLines="1" android:ellipsize="end" />
+    <TextView android:id="@+id/widget_first_subtitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="11sp" android:textColor="#61705F" android:maxLines="1" android:ellipsize="end" />
+  </LinearLayout>
+  <LinearLayout android:id="@+id/widget_second" android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:gravity="center_vertical" android:paddingStart="8dp" android:paddingEnd="0dp" android:orientation="vertical" android:visibility="gone">
+    <TextView android:id="@+id/widget_second_title" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="14sp" android:textStyle="bold" android:textColor="#25342E" android:maxLines="1" android:ellipsize="end" />
+    <TextView android:id="@+id/widget_second_subtitle" android:layout_width="match_parent" android:layout_height="wrap_content" android:textSize="11sp" android:textColor="#61705F" android:maxLines="1" android:ellipsize="end" />
+  </LinearLayout>
+</LinearLayout>

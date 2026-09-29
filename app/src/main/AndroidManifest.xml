@@ -8,7 +8,15 @@
         <provider android:name=".VaultDocumentsProvider" android:authorities="dev.dotnote.app.vaults" android:exported="true" android:grantUriPermissions="true" android:permission="android.permission.MANAGE_DOCUMENTS">
             <intent-filter><action android:name="android.content.action.DOCUMENTS_PROVIDER" /></intent-filter>
         </provider>
-        <activity android:name=".MainActivity" android:exported="true"
+        <receiver android:name=".QuickNoteWidget" android:exported="false" android:label="@string/widget_quick_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_quick_info"/>
+        </receiver>
+        <receiver android:name=".RecentNotesWidget" android:exported="false" android:label="@string/widget_recent_name">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE"/></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_recent_info"/>
+        </receiver>
+        <activity android:name=".MainActivity" android:exported="true" android:launchMode="singleTop"
             android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

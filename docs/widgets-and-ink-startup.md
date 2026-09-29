@@ -1,0 +1,13 @@
+# Widgets, vault names and ink startup · 0.4.0
+
+Two native RemoteViews widget providers use the existing app package; no additional SDK or network permission is needed. New note is a compact one-cell widget. Recent notes includes a creation button and adaptive note rows. API 31+ uses exact size mappings supplied by the launcher; API 29–30 uses portrait/landscape size ranges. Height determines row count, and widths of at least 440 dp use two columns. Layout bounds cap the visible list at 32 entries; the on-device recent index retains 100 unique vault/note pairs.
+
+PendingIntents target MainActivity explicitly, are immutable, and use unique data URIs per vault/note. MainActivity handles new intents in the existing task, preserving in-progress local work. New note opens a shared Compose creation dialog with a vault selector and nested-folder browser. Recent-note clicks select the recorded vault, load the note, and update recency. Missing notes produce a message and are removed from recent history. Opening records use an ordered background queue and re-read the latest note under the vault lock to avoid stale rename/deletion races. Title/folder changes and deletes update widget history without changing its opening order. Widgets update on note opening, relevant changes and launcher size changes; no polling job is added.
+
+Renaming a vault atomically updates only `name` in `.dotnote/vault.json`, under the same lock used by snapshots. IDs, directory location, notes and repository settings remain stable. A changed name marks the vault dirty for its next backup and refreshes widgets; re-saving the same name does nothing.
+
+Ink startup previously left native authoring initialization to the first stroke. NotebookView now calls `InProgressStrokesView.eagerInit()` when attached and prepares the pen brush during construction. Stock brush families are reused. The prepared brush refreshes when color or size changes, including immediately at pen-down if necessary. Document decoding also happens on the IO dispatcher. There is no artificial input delay or reduced-fidelity fallback stroke.
+
+References: [Ink eager initialization](https://developer.android.com/reference/androidx/ink/authoring/InProgressStrokesView#eagerInit()), [Android widget layouts](https://developer.android.com/develop/ui/views/appwidgets/layouts).
+
+Validation includes real RemoteViews inflation, widget launch intents, persistent opening order, nested destinations, rename invariants, synthetic first-stroke timing and screenshot visibility. The Android launcher was used to add the recent-notes widget and open its New note dialog. Tablet-specific stylus latency and the Lenovo launcher's exact cell dimensions still need physical-device acceptance.

@@ -4,7 +4,7 @@ An offline, native Kotlin notebook for Android tablets. Built with Jetpack Compo
 
 ## Install
 
-Install `dist/dotnote-0.3.0.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
+Install `dist/dotnote-0.4.0.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
 
 Install this APK over the previous Dotnote build to keep your library.
 
@@ -21,10 +21,23 @@ Create a note from the library. Use a stylus to write, one finger to pan, and tw
 - PDFs imported as locked pages on the canvas with space around them for writing. Original files are copied into private storage. Page navigator and asynchronous page rendering with a bounded bitmap cache.
 - Nested folder trees. Breadcrumbs, search by title/name, rename, move, and delete. Folders must be empty before deletion; folder cycles are rejected.
 - Automatic transactional local saves, a visible save indicator, and retry on save failure. Rotation keeps the editor and history alive.
+- Two Android home-screen widgets: a compact New note button and a resizable recent-notes list. New-note creation includes a vault and nested-folder picker.
+- Rename vaults from the vault chooser; names update in widgets and portable metadata while IDs and repository connections stay intact.
+- The native ink renderer and pen brush initialize when an editor opens, before the first pen-down event.
 - Multiple file-based vaults, each with independent folders, writing preferences and optional GitHub repository. Import/export a complete vault folder; copy files through Android Files → Dotnote vaults.
 - GitHub device sign-in, repository selection, manual backup and restore as a new vault. Automatic backups run after 15–360 minutes without an edit; each edit resets the timer. Optional unmetered network constraint.
 - Legacy ZIP backup/merge restore remains available, including original PDFs.
 - PDF export of either the viewport or all content tiled across pages, including annotations.
+
+## Home-screen widgets and vault names
+
+Long-press an empty area of the Android home screen, choose **Widgets → Dotnote**, and add **New note** or **Recent notes**. The recent-notes widget also includes New note. Resize it to show more entries; wide layouts use two columns. Entries are ordered by last opening, across all local vaults, and show the vault/folder below the title. Each entry opens its original vault. Opening history is local to the device, persists between sessions, and does not count as editing a note or restart GitHub backup timers. It tracks up to 100 openings with duplicate entries removed; a widget displays as many as fit, up to 32.
+
+The New note dialog lets you choose the vault, browse into any existing folder, and create the note in the displayed location. The same dialog is used inside the app and from both widgets. Cancelling does not create a note. To rename a vault, open the vault chooser and tap the pencil beside its name.
+
+## Known issue deferred
+
+GitHub connection still fails on the user's Lenovo tablet with a `github.com` hostname-resolution error. This remains on [TODO.md](TODO.md) at the user's request. The new widgets, vault renaming and local drawing work without GitHub. No GitHub/network workaround is included in 0.4.0.
 
 ## Build
 

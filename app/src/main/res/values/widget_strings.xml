@@ -1,0 +1,12 @@
+<resources>
+  <string name="widget_quick_name">Dotnote · New note</string>
+  <string name="widget_recent_name">Dotnote · Recent notes</string>
+  <string name="widget_quick_description">Create a note and choose its vault and folder.</string>
+  <string name="widget_recent_description">Open recent notes or create a new one. Resize to show more notes.</string>
+  <string name="widget_new_note">+ New note</string>
+  <string name="widget_recents">RECENTLY OPENED</string>
+  <string name="widget_empty">Open a note in Dotnote to see it here.</string>
+  <string name="widget_plus">+</string>
+  <string name="widget_new_label">New note</string>
+  <string name="widget_app_name">Dotnote</string>
+</resources>

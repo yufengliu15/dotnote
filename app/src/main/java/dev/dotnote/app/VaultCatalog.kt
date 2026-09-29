@@ -3,7 +3,10 @@ package dev.dotnote.app
 import android.content.Context
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
 object VaultLocks {
@@ -69,6 +72,22 @@ class VaultCatalog(val context: Context) {
         VaultFiles(root(id)).create(newId(), clean)
         return VaultInfo(id, clean)
     }
+
+    suspend fun rename(id: String, name: String) =
+        withContext(Dispatchers.IO) {
+            val clean = name.trim().take(120)
+            require(clean.isNotEmpty()) { "Enter a vault name" }
+            VaultLocks.forRoot(root(id)).withLock {
+                val manifest = VaultFiles(root(id)).manifest
+                val data = JSONObject(manifest.readText())
+                if (data.getString("name") != clean) {
+                    data.put("name", clean)
+                    atomicText(manifest, data.toString(2))
+                    edited(id)
+                    NoteWidgets.refresh(context)
+                }
+            }
+        }
 
     fun isLegacyTarget(id: String) = prefs.getString("legacyTarget", null) == id
 

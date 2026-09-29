@@ -43,6 +43,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
             .flatMapLatest { it.dao.notes() }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     private val actions = Mutex()
+    var newNoteRequested by mutableStateOf(false)
     var folderId by mutableStateOf<String?>(null)
     var note by mutableStateOf<Note?>(null)
         private set
@@ -97,8 +98,21 @@ class AppState(application: Application) : AndroidViewModel(application) {
     )
 
     private val queue = Channel<Save>(Channel.UNLIMITED)
+    private val openings = Channel<Pair<Store, String>>(Channel.UNLIMITED)
 
     init {
+        viewModelScope.launch(Dispatchers.IO) {
+            for ((storage, id) in openings) {
+                runCatching {
+                    storage.mutex.withLock {
+                        storage.dao.note(id)?.let { latest ->
+                            RecentNotes(getApplication())
+                                .opened(storage.vaultId, latest, storage.dao.allFolders())
+                        }
+                    }
+                }
+            }
+        }
         runAction {
             loadWriting()
             switching = false
@@ -219,9 +233,9 @@ class AppState(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    suspend fun switchVaultNow(id: String) {
-        if (id == store.vaultId) return
-        if (!flush()) return
+    suspend fun switchVaultNow(id: String): Boolean {
+        if (id == store.vaultId) return true
+        if (!flush()) return false
         saveWriting()
         switching = true
         try {
@@ -239,6 +253,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
         } finally {
             switching = false
         }
+        return true
     }
 
     fun switchVault(id: String) = runAction { switchVaultNow(id) }
@@ -268,22 +283,65 @@ class AppState(application: Application) : AndroidViewModel(application) {
         message = "Vault restored from GitHub"
     }
 
-    fun createNote(title: String) = runAction {
-        val created = Note(title = title.trim().ifEmpty { "Untitled" }, folderId = folderId)
-        store.dao.put(created)
-        openNow(created)
+    suspend fun vaultFolders(id: String): List<Folder> {
+        require(catalog.list().any { it.localId == id }) { "Vault is no longer available" }
+        val target = openedStores.getOrPut(id) { Store(getApplication(), requestedVault = id) }
+        return target.dao.allFolders()
     }
 
-    fun open(id: String) = runAction { store.dao.note(id)?.let(::openNow) }
+    fun renameVault(id: String, name: String) = runAction {
+        catalog.rename(id, name)
+        vaultVersion++
+    }
 
-    private fun openNow(value: Note) {
-        val decoded = DocumentCodec.decode(value.document)
+    fun widgetAction(action: WidgetAction) = runAction {
+        if (action.note == null) {
+            newNoteRequested = true
+        } else {
+            val target = requireNotNull(action.vault)
+            if (catalog.list().none { it.localId == target }) {
+                message = "This vault is no longer available"
+                NoteWidgets.refresh(getApplication())
+                return@runAction
+            }
+            if (!flush() || !switchVaultNow(target)) return@runAction
+            val found = store.dao.note(action.note)
+            if (found == null) {
+                withContext(Dispatchers.IO) {
+                    RecentNotes(getApplication()).remove(target, action.note)
+                }
+                message = "This note was deleted or moved to another vault"
+            } else {
+                newNoteRequested = false
+                openNow(found)
+            }
+        }
+    }
+
+    fun createNote(title: String, destination: String? = folderId, vault: String = store.vaultId) =
+        runAction {
+            if (!flush() || !switchVaultNow(vault)) return@runAction
+            require(destination == null || store.dao.allFolders().any { it.id == destination }) {
+                "The selected folder no longer exists"
+            }
+            val created = Note(title = title.trim().ifEmpty { "Untitled" }, folderId = destination)
+            store.dao.put(created)
+            openNow(created)
+        }
+
+    fun open(id: String) = runAction { if (flush()) store.dao.note(id)?.let { openNow(it) } }
+
+    private suspend fun openNow(value: Note) {
+        val decoded = withContext(Dispatchers.IO) { DocumentCodec.decode(value.document) }
         note = value
+        folderId = value.folderId
         document = decoded
         history = History()
         selection = emptySet()
         revision++
         saved = true
+        // Process opening history in order, without putting disk I/O on the first pen event.
+        openings.trySend(store to value.id)
     }
 
     fun save() {

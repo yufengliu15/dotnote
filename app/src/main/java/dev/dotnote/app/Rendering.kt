@@ -25,9 +25,12 @@ fun Camera.matrix() =
 
 fun Bounds.rect() = RectF(left, top, right, bottom)
 
+private val penFamily by lazy { StockBrushes.pressurePen() }
+private val markerFamily by lazy { StockBrushes.highlighter() }
+
 fun brush(color: Int, width: Float, highlight: Boolean): Brush =
     Brush.createWithColorIntArgb(
-        if (highlight) StockBrushes.highlighter() else StockBrushes.pressurePen(),
+        if (highlight) markerFamily else penFamily,
         if (highlight) (color and 0x00ffffff) or 0x55000000 else color,
         width,
         .1f,

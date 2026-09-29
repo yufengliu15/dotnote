@@ -28,6 +28,7 @@ import org.json.JSONObject
 fun VaultManagerDialog(state: AppState, onDismiss: () -> Unit) {
     var name by remember { mutableStateOf("") }
     var github by remember { mutableStateOf(false) }
+    var rename by remember { mutableStateOf<VaultInfo?>(null) }
     val context = LocalContext.current
     val importFolder =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) {
@@ -64,6 +65,9 @@ fun VaultManagerDialog(state: AppState, onDismiss: () -> Unit) {
                             )
                             Spacer(Modifier.width(12.dp))
                             Text(vault.name, Modifier.weight(1f))
+                            IconButton(onClick = { rename = vault }) {
+                                Icon(Icons.Outlined.Edit, "Rename vault ${vault.name}")
+                            }
                         }
                     }
                 }
@@ -107,6 +111,12 @@ fun VaultManagerDialog(state: AppState, onDismiss: () -> Unit) {
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Done") } },
     )
+    rename?.let { vault ->
+        NameDialog("Rename vault", vault.name) { value ->
+            rename = null
+            if (value != null) state.renameVault(vault.localId, value)
+        }
+    }
     if (github) GitHubSettings(state) { github = false }
 }
 

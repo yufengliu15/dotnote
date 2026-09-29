@@ -56,6 +56,9 @@ class FileLibraryDao(private val store: Store, private val index: LibraryDao) : 
             val all = folders.filterNot { it.id == folder.id } + folder
             store.files.replace(all, index.allNotes())
             index.put(folder)
+            runCatching {
+                RecentNotes(store.context).refreshFolders(store.vaultId, index.allNotes(), all)
+            }
             true
         }
     }
@@ -65,6 +68,7 @@ class FileLibraryDao(private val store: Store, private val index: LibraryDao) : 
         else {
             store.files.deleteNote(id)
             index.deleteNote(id)
+            runCatching { RecentNotes(store.context).remove(store.vaultId, id) }
             true
         }
     }
@@ -85,6 +89,10 @@ class FileLibraryDao(private val store: Store, private val index: LibraryDao) : 
         else {
             store.files.writeNote(updated)
             index.put(updated)
+            if (original.title != updated.title || original.folderId != updated.folderId)
+                runCatching {
+                    RecentNotes(store.context).changed(store.vaultId, updated, index.allFolders())
+                }
             true
         }
     }

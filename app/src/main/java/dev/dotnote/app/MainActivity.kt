@@ -1,5 +1,6 @@
 package dev.dotnote.app
 
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
@@ -50,6 +51,14 @@ private val Paper = Color(0xfff7f7f2)
 private val Ink = Color(0xff25342e)
 
 class MainActivity : ComponentActivity() {
+    private var widgetRequest by mutableStateOf<WidgetAction?>(null)
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        widgetRequest = WidgetAction.from(intent)
+    }
+
     private fun hideNavigationBar() {
         WindowCompat.getInsetsController(window, window.decorView).apply {
             systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
@@ -64,6 +73,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) widgetRequest = WidgetAction.from(intent)
         enableEdgeToEdge()
         hideNavigationBar()
         setContent {
@@ -86,6 +96,10 @@ class MainActivity : ComponentActivity() {
                     )
             ) {
                 val state: AppState = viewModel()
+                LaunchedEffect(widgetRequest) {
+                    widgetRequest?.let { state.widgetAction(it) }
+                    widgetRequest = null
+                }
                 Dotnote(state)
             }
         }
@@ -124,6 +138,7 @@ private fun Dotnote(state: AppState) {
                 }
         }
     }
+    if (state.newNoteRequested) NewNoteDialog(state) { state.newNoteRequested = false }
 }
 
 @Composable
@@ -266,7 +281,7 @@ private fun Library(state: AppState) {
                 Icon(Icons.Outlined.CreateNewFolder, "New folder")
             }
             Button(
-                onClick = { dialog = "note" },
+                onClick = { state.newNoteRequested = true },
                 contentPadding = PaddingValues(16.dp),
                 shape = RoundedCornerShape(16.dp),
             ) {
@@ -426,7 +441,9 @@ private fun Library(state: AppState) {
                             color = Color(0xff6f776d),
                         )
                         if (query.isBlank())
-                            Button(onClick = { dialog = "note" }) { Text("Create a note") }
+                            Button(onClick = { state.newNoteRequested = true }) {
+                                Text("Create a note")
+                            }
                     }
                 }
         }
@@ -434,16 +451,12 @@ private fun Library(state: AppState) {
     if (vaults) VaultManagerDialog(state) { vaults = false }
     if (githubSettings) GitHubSettings(state) { githubSettings = false }
     if (dialog != null)
-        NameDialog(if (dialog == "note") "New note" else "New folder", "") { value ->
-            val kind = dialog
+        NameDialog("New folder", "") { value ->
             dialog = null
-            if (value != null) {
-                if (kind == "note") state.createNote(value)
-                else
-                    state.runAction {
-                        state.store.dao.put(Folder(parentId = state.folderId, name = value))
-                    }
-            }
+            if (value != null)
+                state.runAction {
+                    state.store.dao.put(Folder(parentId = state.folderId, name = value))
+                }
         }
     renameFolder?.let { f ->
         NameDialog("Rename folder", f.name) { value ->
@@ -547,7 +560,7 @@ private fun ObjectMenu(onRename: () -> Unit, onMove: () -> Unit, onDelete: () ->
 }
 
 @Composable
-private fun NameDialog(title: String, initial: String, onDone: (String?) -> Unit) {
+fun NameDialog(title: String, initial: String, onDone: (String?) -> Unit) {
     var text by remember { mutableStateOf(initial) }
     AlertDialog(
         onDismissRequest = { onDone(null) },

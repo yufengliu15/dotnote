@@ -21,6 +21,7 @@ import kotlin.math.*
 class NotebookView(context: Context, val state: AppState) : FrameLayout(context) {
     private val density = resources.displayMetrics.density
     private val ink = InProgressStrokesView(context)
+    private var preparedPen = brush(state.color, state.strokeWidth, false)
     private val renderer = ObjectRenderer()
     private val pageSource = PdfPageSource(state.store.assets)
     private val worker = Executors.newSingleThreadExecutor()
@@ -80,7 +81,20 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
         )
     }
 
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        // Allocate the native renderer and drawing surface before the first pen event.
+        ink.eagerInit()
+    }
+
+    private fun currentPen(): Brush {
+        if (preparedPen.colorIntArgb != state.color || preparedPen.size != state.strokeWidth)
+            preparedPen = brush(state.color, state.strokeWidth, false)
+        return preparedPen
+    }
+
     fun refresh() {
+        currentPen()
         content.invalidate()
     }
 
@@ -383,7 +397,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
                 screenMatrix().invert(inverse)
                 val high = activeTool == Tool.HIGHLIGHTER
                 recordedBrush =
-                    brush(state.color, if (high) state.strokeWidth * 5 else state.strokeWidth, high)
+                    if (high) brush(state.color, state.strokeWidth * 5, true) else currentPen()
                 recordedInputs = MutableStrokeInputBatch()
                 recordedPoints.clear()
                 inputStartTime = e.eventTime
