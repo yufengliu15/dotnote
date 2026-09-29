@@ -1,66 +1,129 @@
-# Vaults and GitHub backups · 0.3.0
+# Vaults and GitHub backups
 
-Implemented in Kotlin, with native Android file storage, Room as an index, and WorkManager for deferred uploads. No backend server is required.
+[Documentation index](README.md) · Sources: [GitHub.kt](../app/src/main/java/dev/dotnote/app/GitHub.kt), [GitBackup.kt](../app/src/main/java/dev/dotnote/app/GitBackup.kt), [VaultCatalog.kt](../app/src/main/java/dev/dotnote/app/VaultCatalog.kt), [VaultUi.kt](../app/src/main/java/dev/dotnote/app/VaultUi.kt)
 
-## Vault layout
+## Contract
+
+A vault is one local portable directory. Each local vault may bind to one GitHub repository/branch. Multiple vaults permit multiple repositories, but credentials are currently shared app-wide: there is no separate account per vault.
+
+This is **local-first backup plus explicit restore**, not two-way synchronization. A remote change from another device causes a conflict stop. Restore creates another local vault; it does not merge remote strokes into the current scene or replace the current library. There is no automatic polling for remote changes while simply editing.
+
+The application source repository and a vault-data repository are separate. Initial connection requires an empty repository or one containing only root `README.md`, `LICENSE`, and `.gitignore`. An existing vault repository must be restored, not connected as a fresh backup target. The user chooses public/private visibility in GitHub itself; the app does not create repositories or change privacy settings.
+
+## Authentication
+
+### Device authorization
+
+The public OAuth client ID is `Ov23lisfSrWV5wQwk2we`. It is an identifier, not a secret. It is compiled into `DEFAULT_GITHUB_CLIENT_ID`; `github-setup` preferences can store an advanced override.
+
+1. POST form data to `https://github.com/login/device/code` with `client_id` and `scope=repo`.
+2. Require a device code and the expected verification URI `https://github.com/login/device`.
+3. Show `user_code`; let the user copy it and open the URI in a browser.
+4. Poll `https://github.com/login/oauth/access_token` with client ID, device code, and `urn:ietf:params:oauth:grant-type:device_code`.
+5. Wait at least five seconds between polls; `authorization_pending` continues and `slow_down` adds five seconds. Stop on timeout, declined/expired response, cancellation, or success.
+6. On success, request `/user`, then save login, client ID and token response fields in encrypted credentials.
+
+The app has no OAuth redirect activity, callback URL handler, embedded client secret or auth server. Device authorization must be enabled for the registered GitHub app. This code path does not consume a redirect URI even if GitHub registration asks for one.
+
+The `repo` scope is broader than a repository-scoped fine-grained token. Advanced token setup validates `/user` and stores token/login. Its UI instructs users to grant Contents read/write only on selected vault repositories, or read-only for restore. The code supports repository enumeration for ordinary tokens and installation-backed `ghu_` tokens; selecting a listed repository still requires appropriate effective permissions.
+
+### Credentials and refresh
+
+`Credentials` encrypts the credential JSON with AES/GCM/NoPadding and a 128-bit authentication tag. The AES key is generated in Android Keystore under alias `dotnote-github`. SharedPreferences stores only Base64 IV/ciphertext in `github-credentials` → `encrypted`.
+
+Decrypted fields are `token`, `login`, optional `clientId`, `refresh`, and `expiresAt` in epoch milliseconds. `GitHubAuth.token` serializes refresh under a monitor. If expiry is more than 60 seconds away (or absent), it returns the token. Otherwise it requires a refresh token and requests a refresh without a client secret; a failure to obtain an access token asks the user to reconnect.
+
+Credentials are not included in vault files, ZIPs, exported folders, Git snapshots or Android automatic backup. A new device signs in independently. Clearing local credentials is not remote token revocation and does not delete the Keystore key. Broken credential decryption yields an explicit reconnect error.
+
+Account disconnect cancels currently queued work and clears local credential preferences. Existing vault repository configurations remain. Later app startup/edits can schedule work against those bindings again; it will require credentials to succeed. Per-vault repository disconnect cancels that vault's work and removes `repo`, `base`, and `pending`, while leaving other historical configuration fields.
+
+## HTTP/Git adapter
+
+`GitHub` uses `HttpURLConnection` with fixed GitHub hosts, HTTPS, 20-second connect and 45-second read timeouts, redirects disabled, JSON Accept headers, `User-Agent: Dotnote-Android`, and API version `2022-11-28`. Bearer authorization is sent to API requests, not device-code requests. Repository input normalization supports owner/repository and the expected GitHub HTTPS prefix, strips a trailing slash/`.git`, and rejects invalid owner/name forms. Enterprise/custom Git hosts are not implemented.
+
+JSON responses are bounded to 32 MiB. Repository listing is paginated and deduplicated by full name: ordinary listing permits up to 100 pages of 100; installation-backed listing traverses bounded installation/repository pages. Repository metadata supplies the default branch, private flag and push permission. There is no branch-selection UI.
+
+Tree lookup resolves a commit to its recursive tree, rejects truncated responses, limits non-directory entries to 10,000, and accepts only regular blobs with mode `100644`. Symlinks, executable-mode blobs and submodules are rejected. Blob upload streams Base64 JSON instead of constructing a full Base64 attachment string in memory. Blob download streams raw bytes, checks exact advertised length and verifies Git's SHA-1 blob digest (`"blob <length>\0" + bytes`). Local imported-PDF names use SHA-256 instead; those are different digests for different purposes.
+
+HTTP errors map to readable messages. The worker separately classifies 401/404/422 as terminal, while some other HTTP/network failures retry. A protected branch can reject writes; the app does not disable branch protection.
+
+## Device-local backup configuration
+
+`VaultCatalog` stores each JSON object under `config_<local-id>` in the `vaults` preferences. These values are intentionally excluded from portable settings.
+
+| Key | Meaning |
+| --- | --- |
+| `repo` | `owner/name`; absent/blank means no binding |
+| `branch` | Branch captured from repository default branch when connected/restored |
+| `private` | Last observed repository privacy, for display |
+| `automatic` | Automatic scheduling enabled, default true when bound |
+| `minutes` | Inactivity delay, default 60, allowed 15–360 |
+| `unmetered` | Require unmetered networking; default false |
+| `editedAt` | Last local managed edit epoch milliseconds |
+| `revision` | Local dirty revision, incremented by `edited()` |
+| `backedRevision` | Revision represented by last successful snapshot; default -1 for scheduling |
+| `base` | Last accepted remote commit SHA; empty for an initially empty repository |
+| `pending` | Commit created locally/remotely but whose ref-update acknowledgement may be uncertain |
+| `pendingRevision` | Revision associated with that pending commit |
+| `lastBackup` | Last successful/reconciled backup time |
+| `status` | User-visible status/error string, not an enum/state machine |
+
+Vault naming, folder/note changes, document camera/dot changes, and saved writing settings can increment the dirty counter. Merely recording a note opening does not. Identical saves/settings suppress redundant dirty changes. No repository is required for local edits; the status/counter can still be updated while unbound.
+
+## Scheduling: inactivity, not a repeating timer
+
+`BackupScheduler.schedule` creates unique one-time work named `vault-backup-<local-id>` with `ExistingWorkPolicy.REPLACE`.
 
 ```text
-.dotnote/
-  vault.json
-  settings.json
-Physics [folder-uuid]/
-  .folder.json
-  Lecture 8 [note-uuid].dotnote
-attachments/
-  <asset-id>.pdf
+remainingDelay = max(0, editedAt + minutes * 60,000 - now)
 ```
 
-All JSON is UTF-8. Vault manifest: `format: "dotnote-vault"`, `version: 1`, stable `id`, display `name`. Each folder marker has stable `id` and display `name`. Each note has `format: "dotnote"`, `version: 1`, `id`, `title`, millisecond `modified`, and a `document` object containing existing version-1 document data. The native Ink payload retains original stylus/brush data; shapes, transforms, highlighters, camera and relative PDF references round-trip unchanged. Filenames include full IDs so duplicate titles cannot overwrite each other.
+Each actual edit replaces existing work and resets the deadline. Continuous editing can postpone automatic backup indefinitely; “every 15 minutes” is not the implemented contract. Scheduling skips unbound vaults, disabled automatic backup, and already-backed revisions. The app reconciles work on startup.
 
-Portable settings contain six palette slots, active color, stroke width, grid rows/columns, finger drawing and toolbar dock. Repository connection details, account credentials, edit revision, last backed-up commit and WorkManager state are device-local and never included in the vault.
+Requests carry `vault` and `manual` input fields. Network constraints are CONNECTED or UNMETERED. Backoff is exponential from 30 seconds. Manual “Back up now” sets initial delay zero and bypasses inactivity/automatic-disabled checks, but still respects networking and Android scheduling. The UI first flushes the document and writing settings.
 
-The root is app-private `files/vaults/<local-id>/`; the local ID is distinct from the portable manifest ID. Restoring a vault creates a new local ID and preserves its portable IDs. Multiple copies can coexist safely.
+`VaultBackupWorker` rechecks the persisted deadline and automatic flag after waking. A too-early automatic run retries; a disconnected/disabled automatic run succeeds without upload. Android Doze, battery policies, connectivity and WorkManager may delay execution. No exact alarm, foreground service or battery-exemption flow is implemented.
 
-Android Files exposes **Dotnote vaults** as a read-only document provider for copying. Vault import/export uses the system folder picker. Import copies files into a new local vault; export creates a new timestamped snapshot folder. Neither establishes a live link to an arbitrary external/cloud folder. Copy all metadata, notes and attachments together. An export interrupted before success may leave an incomplete destination folder; the source vault remains intact.
+On errors, status is persisted. `RemoteChanged`, `IllegalArgumentException` and HTTP 401/404/422 return failure. Other exceptions retry while `runAttemptCount < 6`, then fail. Cancellation is rethrown. This is not infinite retry, and no notification channel alerts the user; inspect status in settings.
 
-## Saving and migration
+## Backup algorithm
 
-File writes precede index updates. Android AtomicFile handles individual JSON replacement; `.dotnote/transaction.json` records multi-file writes/deletes so interrupted moves can finish before indexing. Room can be rebuilt from files. Deleted notes are retained under `.dotnote/trash/`; journal, trash and migration bookkeeping are excluded from snapshots. Retained attachments support recovery.
+The complete operation holds the per-vault upload mutex; it acquires the root mutex only for snapshot staging.
 
-On the first upgrade, the original Room library and referenced PDFs are copied into the initial vault, validated and indexed. The old database and attachments remain untouched. Existing writing preferences are written into that vault. Subsequent launches rebuild the selected vault's index from files.
+1. Read binding and token, set status to backing up, fetch branch head.
+2. If remote head equals a persisted `pending` commit, recognize a previously successful ref update whose response was lost; advance `base`/backed revision and clear pending state as processing completes.
+3. Require remote head (or empty string) to equal the accepted `base`. Otherwise stop with `RemoteChanged` before replacing remote content.
+4. Under the root mutex, instantiate/read `VaultFiles`, capture current backup revision and create a coherent snapshot in cache `upload-<uuid>`.
+5. Preflight **every** staged file as strictly smaller than 100 MiB. Reject the backup if any exceeds the limit; do not omit PDFs/notes.
+6. For a completely empty repository, use the Contents endpoint to create `README.md` in a bootstrap commit, then record its SHA as base. Git Data endpoints alone cannot initialize the empty repository in this implementation.
+7. Read the accepted tree. Compare each staged file's Git blob SHA against its remote entry. Upload changed blobs only; add deletion entries (`sha: null`) for remote managed files absent locally. Preserve allowed nonmanaged root documents using the base tree.
+8. If there are changes, create one new tree and one commit whose parent is the accepted head. Recheck the branch head before publication.
+9. Persist `pending` commit SHA/revision **before** PATCHing the branch ref with `force: false`. Convert a 422 rejection to a conflict.
+10. Update `base`, `backedRevision`, `lastBackup`, and status. If the current local revision exceeds the staged revision, report “New edits waiting for backup”; otherwise report all changes backed up. Clear pending fields and remove staging in `finally`.
 
-Restore stages and validates the complete vault before publishing it. It rejects unsupported versions, duplicate IDs, invalid folder trees, missing attachments, unsafe paths, symlinks and oversized input. Git downloads are verified against Git blob SHA-1 identifiers. Limits: 10,000 vault entries, fewer than 64 directory levels, 64 MiB/note JSON, 256 MiB combined note JSON, 1 GiB restore total, plus filesystem/path limits. Git files must be smaller than 100 MiB; local imported PDFs may be up to 512 MiB.
+An unchanged snapshot makes no extra content commit, but updates local successful-backup status/time. The first backup of an empty repository may produce two commits (README bootstrap plus vault snapshot). Staged file paths include only manifest/settings, folder markers, notes and referenced PDFs. Trash, journal, migration marker, credentials, Room, widget recency and orphan assets are excluded.
 
-## GitHub connection
+Remote changes during upload are caught by the final head check/non-force ref update. Uploading unreachable blobs/commits before a conflict is possible; they do not overwrite the branch. The pending-commit mechanism covers uncertain final ref acknowledgements. It does not fully cover every network interruption, notably an acknowledged-lost initial README bootstrap. This protocol is not a distributed transaction or a merge engine.
 
-The registered OAuth app's public Client ID is included in `GitHub.kt`. GitHub's device authorization is enabled. The callback field may contain `http://127.0.0.1/callback`; device flow does not use it. Dotnote displays a short code; the user copies it and opens GitHub authorization. The app polls at GitHub's required interval, handles slowdown/expiration/denial, and uses no client secret. OAuth requests the `repo` scope, which allows private repository access; this is broader than access to just one vault repository.
+## Restore algorithm
 
-Advanced setup supports a different public Client ID or a fine-grained personal access token restricted to selected repositories. Contents read/write is required to back up; read access suffices for restore. Read-only restores do not enable automatic uploads. The UI lists accessible repositories and also accepts `owner/repository` or a github.com URL. Repository visibility is shown and never changed by Dotnote.
+1. Normalize the repo name, inspect repository/default branch and pin its current head SHA.
+2. Require `.dotnote/vault.json`. Reject unexpected tree files other than managed paths and root README/LICENSE/.gitignore.
+3. Require each managed blob size in `[0, 100 MiB)`, aggregate managed size at most 1 GiB, and an acceptable nontruncated tree.
+4. Download managed blobs into `files/vaults/.restore-<uuid>`, verify lengths/digests.
+5. `VaultCatalog.publish` validates the entire staged vault and renames it to a fresh local ID. Portable IDs, notes, folders and preferences remain intact.
+6. Store a new binding with pinned head as base, revision/backed revision zero, delay 60, and automatic enabled only if the repo is writable. Mark status restored and switch through AppState's ordinary flow.
 
-Tokens are encrypted with AES-GCM and Android Keystore. Vault exports, source artifacts and Git commits contain no tokens. A device signs in independently after restore. If a token expires or access is revoked, backups report failure and the user reconnects; refresh is attempted only when the authorization response supplies a refresh token. No embedded secret is used.
+Read-only repositories can be restored and edited locally. They cannot successfully receive backups without write access; the UI/API still enforce permissions where relevant. Restore is the current default-branch snapshot, not a branch/commit/history chooser. Remote changes after the pinned commit will be detected on a later upload.
 
-Reference: [GitHub OAuth device flow](https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps).
+## Conflict workflow and limitations
 
-## Backup scheduling
+When the branch is newer than `base`, keep local work, restore the repository as another vault, and inspect the two copies. The app does not automatically reconcile them. Two devices repeatedly editing the same repository require an explicit workflow; setting up the same repo on both devices is not sync. Reconnecting an already populated repository as a new target is deliberately rejected.
 
-One unique one-time WorkManager job per vault uses `REPLACE` after each edit. The delay accepts every whole minute from **15 through 360**, measured from the latest persisted edit. Edits restart the countdown. A worker checks that persisted deadline again when it runs. It requires connectivity, optionally an unmetered network, with bounded exponential retries for transient failures. Reboot/process restarts are handled by WorkManager. Opening the app reconciles pending vault jobs.
+Private repositories restrict GitHub access but vault content is not end-to-end encrypted. Git LFS, arbitrary Git hosts, repository creation/privacy management, scheduled historical retention, merge conflict resolution, and background download synchronization are absent. Large PDFs that work locally may exceed the stricter Git file limit.
 
-**Back up now** skips the time delay, while respecting the network constraint. Automatic backups can be disabled independently per vault. The UI shows local save state separately from backup status and the last successful backup time. Android Doze, battery restrictions and network availability can delay execution; this is not an exact alarm.
+## Verification and deferred issue
 
-Reference: [Android persistent work scheduling](https://developer.android.com/develop/background-work/background-tasks/persistent/getting-started/define-work).
+`VaultPipelineTest` uses injected `GitHub`/token providers to test trees, commits, no-change backups, final-response loss, restore and remote conflicts. `VaultLifecycleTest` inspects real WorkManager requests for delay replacement and unmetered constraints. These are meaningful local protocol tests, not live private-account certification.
 
-## Coherent commits and conflict protection
-
-A vault mutex creates a consistent immutable snapshot of notes, folders, preferences and referenced PDFs. Git blob hashes identify changes. Only changed files are uploaded; removed managed files get deletion entries. Unchanged snapshots do not create commits. A changed snapshot publishes through one new tree and commit. A completely empty repository first needs a README initialization commit.
-
-Before upload, the branch head must equal the last downloaded/uploaded commit. It is checked again before updating the ref, and the update never forces a branch. A newer remote head stops the backup, preserving both local edits and remote changes. A pending commit ID and revision are persisted before the final request; if GitHub accepted it but the response was lost, retry recognizes that commit without uploading a duplicate snapshot.
-
-This is backup plus explicit restore, not concurrent two-way synchronization. Conflict messages direct the user to restore the remote repository as a separate vault for review. There is no automatic conflict merge or in-app historical commit picker. Git history retains earlier backups. Restoring the repository uses its current default-branch head, pinned for the entire download.
-
-Use a dedicated notes repository, such as `dotnote-notes`, separate from application source. Connecting an existing vault repository requires Restore, preventing accidental overwrite. Oversized PDFs fail the backup with an explicit message; no silent omissions or Git LFS support. A lost response during the initial README bootstrap may require reconnecting after inspecting the repository.
-
-Reference: [GitHub file limits](https://docs.github.com/en/repositories/working-with-files/managing-large-files/about-large-files-on-github).
-
-## Remaining device acceptance
-
-Live device-code issuance has been verified for the configured Client ID. Account authorization and private-repository upload require the user's GitHub session and remain a manual acceptance check. Emulator tests exercise file migration, vault isolation, WorkManager scheduling, Git backup/restore, lost responses and remote conflicts using a deterministic Git API fixture. Physical Lenovo stylus behavior and Android background timing must still be checked on the tablet.
+The release record confirms the configured client ID obtained a live device code. The user's Lenovo still reports `Unable to resolve host "github.com": No address associated with hostname`; internet/network-state permissions already exist. The user explicitly deferred this in [TODO.md](../TODO.md). Do not label sign-in or end-to-end backup fixed without reproducing it on that tablet. Future diagnosis should distinguish DNS/network failure before token exchange from API/auth/permission errors after it, and should never log tokens.

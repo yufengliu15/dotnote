@@ -1,13 +1,114 @@
-# Widgets, vault names and ink startup · 0.4.0
+# Widgets, vault names, and first-stroke startup
 
-Two native RemoteViews widget providers use the existing app package; no additional SDK or network permission is needed. New note is a compact one-cell widget. Recent notes includes a creation button and adaptive note rows. API 31+ uses exact size mappings supplied by the launcher; API 29–30 uses portrait/landscape size ranges. Height determines row count, and widths of at least 440 dp use two columns. Layout bounds cap the visible list at 32 entries; the on-device recent index retains 100 unique vault/note pairs.
+[Documentation index](README.md) · Feature baseline: 0.4.0
 
-PendingIntents target MainActivity explicitly, are immutable, and use unique data URIs per vault/note. MainActivity handles new intents in the existing task, preserving in-progress local work. New note opens a shared Compose creation dialog with a vault selector and nested-folder browser. Recent-note clicks select the recorded vault, load the note, and update recency. Missing notes produce a message and are removed from recent history. Opening records use an ordered background queue and re-read the latest note under the vault lock to avoid stale rename/deletion races. Title/folder changes and deletes update widget history without changing its opening order. Widgets update on note opening, relevant changes and launcher size changes; no polling job is added.
+## Home-screen widgets
 
-Renaming a vault atomically updates only `name` in `.dotnote/vault.json`, under the same lock used by snapshots. IDs, directory location, notes and repository settings remain stable. A changed name marks the vault dirty for its next backup and refreshes widgets; re-saving the same name does nothing.
+Two native `AppWidgetProvider`s build Android `RemoteViews`. There is no Glance dependency, collection service, network feed or periodic widget polling.
 
-Ink startup previously left native authoring initialization to the first stroke. NotebookView now calls `InProgressStrokesView.eagerInit()` when attached and prepares the pen brush during construction. Stock brush families are reused. The prepared brush refreshes when color or size changes, including immediately at pen-down if necessary. Document decoding also happens on the IO dispatcher. There is no artificial input delay or reduced-fidelity fallback stroke.
+| Provider | Definition | Behavior |
+| --- | --- | --- |
+| `QuickNoteWidget` | [widget_quick_info.xml](../app/src/main/res/xml/widget_quick_info.xml), [widget_quick_note.xml](../app/src/main/res/layout/widget_quick_note.xml) | New note tile; 64×64 dp minimum, target 1×1 home-screen cells |
+| `RecentNotesWidget` | [widget_recent_info.xml](../app/src/main/res/xml/widget_recent_info.xml), [widget_recent_notes.xml](../app/src/main/res/layout/widget_recent_notes.xml), [widget_note_row.xml](../app/src/main/res/layout/widget_note_row.xml) | New note header plus as many recent entries as fit; 250×250 dp initial minimum, target 3×3 cells, resizable down to 180×80 dp |
 
-References: [Ink eager initialization](https://developer.android.com/reference/androidx/ink/authoring/InProgressStrokesView#eagerInit()), [Android widget layouts](https://developer.android.com/develop/ui/views/appwidgets/layouts).
+Both are resizable horizontally/vertically, categorized for the home screen, and set `updatePeriodMillis=0`. Their nonexported receivers and metadata are registered in the manifest. Strings and visuals live in [widget_strings.xml](../app/src/main/res/values/widget_strings.xml), [widget_background.xml](../app/src/main/res/drawable/widget_background.xml) and [widget_button.xml](../app/src/main/res/drawable/widget_button.xml).
 
-Validation includes real RemoteViews inflation, widget launch intents, persistent opening order, nested destinations, rename invariants, synthetic first-stroke timing and screenshot visibility. The Android launcher was used to add the recent-notes widget and open its New note dialog. Tablet-specific stylus latency and the Lenovo launcher's exact cell dimensions still need physical-device acceptance.
+To add one, the user opens the launcher's widget chooser and selects Dotnote → New note or Recent notes. There is no app-side pin/configuration activity. The launcher controls exact cell sizes and resizing affordances.
+
+### Capacity and adaptive layouts
+
+[`widgetSpace(width,height)`](../app/src/main/java/dev/dotnote/app/NoteWidgets.kt) operates in dp:
+
+```text
+columns = 2 if width >= 440, otherwise 1
+rows = clamp(integer((height - 104) / 56), 0, 16)
+capacity = columns * rows
+```
+
+The 104 dp budget consists of 16 dp top/bottom padding, a 44 dp header and a 28 dp section label. Each note row is 56 dp. Maximum visible entries are 32. This is a fixed visible list, not a scrollable collection. If no row fits, the new-note action remains; if rows fit but history is empty, the empty-state label appears. Entries fill row-major order, with the second column hidden when unused.
+
+Examples: 250×280 dp yields one column × three rows = three notes; 500×280 gives six; height 80 yields no rows. Text uses single-line title/folder labels, so long names may truncate rather than expand capacity.
+
+On API 31+, provided `OPTION_APPWIDGET_SIZES` values are deduplicated, capped at 16 and mapped to exact `RemoteViews` sizes. Without those values, including API 29–30, the code creates landscape/portrait alternatives from min/max width/height options. Fallback dimensions are 350×180 and 250×280 dp. Tests cover sizing math and actual inflation; an OEM launcher may report different sizes.
+
+### Updates and threading
+
+`NoteWidgets` uses a single-thread executor. Providers call `goAsync()`, enqueue `updateAll`, and finish their pending result in `finally`. `updateAll` reads current vault names and recent entries, gets IDs of both providers, and updates every installed instance with fresh layouts. Refresh is triggered by opening-history changes, relevant rename/move/delete operations, vault rename, provider updates, and launcher option changes.
+
+Update failures are wrapped in `runCatching`; a widget failure does not block local note saving. There is no durable retry queue or error notification for widget rendering. A stale widget can refresh on the next relevant event. No WorkManager job is added for widget refresh.
+
+## Recently opened data
+
+[`RecentNotes`](../app/src/main/java/dev/dotnote/app/RecentNotes.kt) stores a JSON string under `recent-notes` → `items`:
+
+```json
+[
+  {
+    "vault": "local-vault-id",
+    "note": "note-id",
+    "title": "Lecture 8",
+    "folder": "Course / Week 3"
+  }
+]
+```
+
+Array order is recency; there is no timestamp field. Opening prepends a unique `(localVaultId,noteId)` pair, removes its older occurrence and retains at most 100. IDs are validated on read; a malformed overall array falls back to empty. Preferences commit synchronously inside a class-level monitor, on the background caller, then request widget refresh.
+
+AppState queues openings separately from saves. The FIFO consumer locks the recorded store, re-reads the latest note/folders and only records an existing note. This protects against an opening update arriving after a rename/delete. Optional recency errors are swallowed and do not mark document save failure.
+
+- Note rename/move updates cached labels in place, keeping opening order.
+- Folder rename/move recomputes full ancestor paths for that vault and drops missing notes.
+- Note deletion removes the pair.
+- Vault rename resolves its display name fresh during widget rendering; entries store local IDs, not vault names.
+- Missing vaults are filtered from displayed history; their stored records are not proactively purged.
+- Opening a stale missing-note entry removes it and reports an error.
+
+`folderPath` traverses parents with cycle protection and joins names using ` / `; root is “Vault root.” Recency is local-only, excluded from portable files/backups, and does not increment `revision` or reset Git inactivity deadlines. Actual camera/settings changes while using a note can still count as edits.
+
+## Click identity and activity routing
+
+[`NoteWidgets.launchIntent`](../app/src/main/java/dev/dotnote/app/NoteWidgets.kt) explicitly targets `MainActivity`:
+
+| Action | URI identity | Extras |
+| --- | --- | --- |
+| `dev.dotnote.app.NEW_NOTE` | `dotnote-widget://new` | None |
+| `dev.dotnote.app.OPEN_NOTE` | `dotnote-widget://open/<localVaultId>/<noteId>` | `vault`, `note` |
+
+The URI is PendingIntent identity, not a public browsable deep-link registration. Request code is 0, with `FLAG_UPDATE_CURRENT | FLAG_IMMUTABLE`. Unique URI data prevents every row from accidentally opening the most recently constructed intent; extras alone do not distinguish PendingIntents.
+
+Activity flags are NEW_TASK, CLEAR_TOP and SINGLE_TOP. The manifest's `singleTop` activity handles `onNewIntent`, updates the activity Intent and parses a new `WidgetAction`. On fresh creation it parses the launch intent only if `savedInstanceState == null`, avoiding replay on ordinary rotation. A Compose `LaunchedEffect` hands the request to AppState and clears it.
+
+`WidgetAction.from` only recognizes the two actions and requires valid IDs for opening. AppState's action then checks the actual vault/note, flushes old work, switches if needed, and opens it. New note instead toggles the shared creation dialog, where the user explicitly chooses vault/folder. It does not create a note merely because the widget was tapped. Errors use the normal message/busy path.
+
+Do not replace this with an unconditional new Activity/task, skip the flush boundary, or key PendingIntents only by a common request code. These details protect the user's currently open work and cross-vault navigation.
+
+## Vault renaming
+
+[`VaultCatalog.rename`](../app/src/main/java/dev/dotnote/app/VaultCatalog.kt) trims/caps a name to 120 characters, rejects blank, takes the root mutex, reads `.dotnote/vault.json` and atomically updates only `name`. Changed names call `edited()` and widget refresh. Identical names do neither. `AppState.renameVault` increments `vaultVersion` so Compose reloads the chooser/name display.
+
+Renaming preserves local ID, portable ID, files, index name, repository binding, PendingIntent targets and recent order. The root directory remains the local ID; the new display name is visible through the chooser, documents provider and subsequent exports/backups. There is no global uniqueness requirement for display names.
+
+## First-stroke startup work
+
+The earlier implementation let the first pen event trigger native authoring setup. Current code moves the setup earlier:
+
+- `NotebookView` creates a prepared pen brush during construction.
+- `onAttachedToWindow` calls `InProgressStrokesView.eagerInit()` to initialize renderer/surface before pen-down.
+- Stock brush families are cached in `Rendering.kt`.
+- `refresh()` updates the prepared brush when color/width changes; begin checks it again before use.
+- `AppState.openNow` decodes the saved document on IO rather than the main thread.
+
+There is no deliberate one-second input timer in the production pen path, forced software renderer, simplified fallback stroke, or disabled pressure. Current preview and durable stroke both still use the chosen stock pen.
+
+`InkStartupTest.firstPenStrokeRendersWithoutOneSecondStartupPause` starts synthetic drawing once the canvas is laid out, times input dispatch and checks visible ink in a screenshot before one second. The recorded final emulator result was **48 ms input dispatch / 236 ms visible ink**. This does not measure the full note-open-to-ready interval, physical digitizer latency or Lenovo firmware behavior.
+
+For the emulator-only native teardown crash, the test drains Ink rendering through `ink.sync(2, TimeUnit.SECONDS)` before destroying its view. That happens after measurement and is test cleanup, not a production startup workaround. See [build/test notes](build-test-release.md).
+
+## Verification and acceptance
+
+- `WidgetRulesTest`: capacity math and duplicate-name folder paths.
+- `WidgetPipelineTest`: rename invariants; persistent recency and metadata changes; inflated responsive layouts and distinct click targets; UI-driven creation in another vault's nested folder and cross-vault reopening.
+- `InkStartupTest`: synthetic first-stroke dispatch and screenshot visibility.
+- `VaultLifecycleTest`: switching preserves separate note/settings state.
+
+The release workflow also used the Android launcher to add the actual recent widget and open its new-note dialog. Physical Lenovo acceptance remains open: add/resize both widget types in both orientations, test stale entries and cold/warm app launches, and compare the first and subsequent strokes immediately after opening large and empty notes. No fix to the deferred GitHub DNS failure is part of these features.

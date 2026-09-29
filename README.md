@@ -2,6 +2,10 @@
 
 An offline, native Kotlin notebook for Android tablets. Built with Jetpack Compose, AndroidX Ink 1.0, Room, and Android's PDF renderer. Works offline without an account. Optional GitHub backups; no subscriptions or analytics.
 
+## Engineering documentation
+
+Start with [docs/README.md](docs/README.md) for the implementation guide: architecture, exact file formats, storage/recovery, drawing and PDF pipelines, user flows, widgets, GitHub backup protocol, build/test instructions, and known limitations. It includes a reading order and source map for agents continuing development.
+
 ## Install
 
 Install `dist/dotnote-0.4.0.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
