@@ -14,7 +14,7 @@ Use a full JDK 17 and an Android SDK with platform 36 plus compatible build tool
 | KSP | 2.2.21-2.0.4 |
 | Java/Kotlin bytecode | 17 |
 | Package / namespace | `dev.dotnote.app` |
-| App version | code 8, name `0.5.2` |
+| App version | code 9, name `0.6.0` |
 | Android support | minimum API 29 (Android 10), compile/target API 36 (Android 16) |
 | Compose BOM | 2025.12.00 |
 | Activity Compose | 1.12.1 |
@@ -66,7 +66,7 @@ Tests are in [`app/src/test/java/dev/dotnote/app/`](../app/src/test/java/dev/dot
 
 These are ordinary JUnit tests with a JVM `org.json` dependency. Native Android Ink rendering, actual Room/WorkManager, Views and PDF APIs require instrumentation; a passing JVM suite cannot establish those behaviors.
 
-## Test inventory: 27 Android tests
+## Test inventory: 32 Android tests
 
 Tests are in [`app/src/androidTest/java/dev/dotnote/app/`](../app/src/androidTest/java/dev/dotnote/app/).
 
@@ -76,6 +76,7 @@ Tests are in [`app/src/androidTest/java/dev/dotnote/app/`](../app/src/androidTes
 | `FlingNavigationTest` | 3 | 40-page PDF fling, speed/direction/zoom, decay and saved camera; touch/stylus/page/fit/release interruption; slow/cancelled/pinch/drawing exclusion |
 | `GesturePipelineTest` | 1 | `stylusCoordinatesUndoAndReopenSurviveZoom`: synthetic stylus at 200% zoom, pen/highlighter, save/reopen and history |
 | `EditorUpdateTest` | 3 | `repeatedHighlightsKeepOpacityAfterReopen`; `pdfHighlightsStayTranslucentAndDoNotAccumulate`; `paletteLongPressPersistsAndSelectionPickerSupportsUndo` |
+| `NotesRoleTest` | 5 | CREATE_NOTE resolver/qualification flags; role availability guard; fresh-note privacy and ignored external IDs; rotation/save retention; reused-task save and new scene; independent launches |
 | `GitHubSignInLifecycleTest` | 2 | Real Android lifecycle pauses exchange while the browser is open; cancellation prevents exchange on return |
 | `VaultPipelineTest` | 4 | `filesRebuildIndexAndPreserveMovedNotes`; `interruptedFileTransactionReplaysBeforeReading`; `androidFilesProviderImportsNestedVaultWithoutChangingSource`; `gitBackupRestoreNoChangeAndConflictRecovery` |
 | `VaultLifecycleTest` | 3 | `lastEditReplacesScheduledWorkAndKeepsNetworkPreference`; `migrationCopiesLegacyNotesAndPdfsWithoutDeletingOriginals`; `vaultSwitchFlushesNotesAndKeepsSeparatePalettes` |
@@ -92,6 +93,7 @@ On the validated Android 16/API 36 ARM64 tablet emulator (1280×800), UI classes
 
 ```sh
 adb shell am instrument -w -e class dev.dotnote.app.VaultPipelineTest,dev.dotnote.app.VaultLifecycleTest,dev.dotnote.app.NativePipelineTest dev.dotnote.app.test/androidx.test.runner.AndroidJUnitRunner
+adb shell am instrument -w -e class dev.dotnote.app.NotesRoleTest dev.dotnote.app.test/androidx.test.runner.AndroidJUnitRunner
 adb shell am instrument -w -e class dev.dotnote.app.WidgetPipelineTest dev.dotnote.app.test/androidx.test.runner.AndroidJUnitRunner
 adb shell am instrument -w -e class dev.dotnote.app.InkStartupTest dev.dotnote.app.test/androidx.test.runner.AndroidJUnitRunner
 adb shell am instrument -w -e class dev.dotnote.app.EditorUpdateTest dev.dotnote.app.test/androidx.test.runner.AndroidJUnitRunner
@@ -119,6 +121,7 @@ The historical 0.4.0 release result was 14/14 JVM and 18/18 Android. For 0.4.1, 
 | File layout/transactions/transfer | Vault pipeline + migration/switch lifecycle; malformed/interrupted cases |
 | Git/auth/scheduling | Sign-in JVM/lifecycle tests + vault rules + pipeline + lifecycle; live account/network checks only when authorized/available |
 | Widgets/new-note/rename | Widget rules + widget pipeline; launcher resize/cold/warm opening |
+| System notes/default app | Notes role tests + vault/lifecycle + widget/editor/startup regressions; real locked launch and Lenovo default-app/pen entry point |
 | Documentation only | Relative links, examples, source consistency and `git diff --check`; no APK required |
 
 Run the relevant checks plus compilation/lint for source changes. Broaden testing when shared invariants change. Do not rerun expensive device suites merely to validate prose edits.
@@ -131,6 +134,7 @@ Run the relevant checks plus compilation/lint for source changes. Broaden testin
 4. Create nested folders and same-name notes, move/rename, reject cycles/nonempty deletion. Background and reopen after “Saved.” Export/import complete vaults and merge legacy ZIP without replacing originals.
 5. Add both widgets, resize/orient, create in another vault's nested folder, test recent order and renamed/deleted targets. Rename a vault and verify widget/file-provider labels.
 6. Authorize GitHub in the browser and return to Dotnote to complete sign-in; then back up/restore a private test vault, revoke credentials, interrupt network/ref acknowledgement, and create a remote conflict. Confirm local notes remain usable throughout.
+7. Select Dotnote in Lenovo's default notes-app settings, launch using the system pen shortcut while unlocked and locked, resize/rotate the quick-note window, and check the saved notes after unlocking. See [default notes app](default-notes-app.md).
 
 ## Packaging and signing
 

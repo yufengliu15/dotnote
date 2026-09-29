@@ -1,4 +1,23 @@
-# Verification · 0.5.2 (build 8)
+# Verification · 0.6.0 (build 9)
+
+Validated September 29, 2026 using JDK 20 (bytecode target 17), Android SDK 36, the cached Gradle toolchain, and the existing disposable Android 16 / API 36 ARM64 emulator with `skiagl`. Physical Lenovo selection and pen-shortcut acceptance remain pending.
+
+- Debug and instrumentation APKs built successfully; **29 JVM tests passed**. Lint: **0 errors, 35 warnings**.
+- **22 focused Android tests passed** in separate instrumentation processes: NotesRoleTest (5), VaultPipelineTest (4), VaultLifecycleTest (3), GitHubSignInLifecycleTest (2), EditorUpdateTest (3), WidgetPipelineTest (4), InkStartupTest (1). Other historical drawing/performance suites were not rerun for this integration.
+- Notes tests verify the package-scoped implicit `CREATE_NOTE` resolver, exported activity, required `showWhenLocked`/`turnScreenOn` flags, separate document tasks, unavailable-role guarding, ignoring historical note/vault extras, fresh blank documents, rotation/save retention, independent launches, and saving the previous note before a reused activity opens another blank scene.
+- Manual secure lock-screen launch: the quick-note activity appeared with keyguard still showing and input restricted (`mKeyguardOccluded=true`); visible controls exposed only the new note and writing tools. No library, historical title, vault label, or account controls appeared. The temporary emulator PIN was removed after the check.
+- Startup regression: **37 ms input dispatch / 281 ms screenshot-observed visibility** on the emulator. This is not a physical-tablet latency measurement.
+- APK v2 signature verifies; certificate SHA-256 `825739c9e1b77f0276094938143f07b6a51e636344c076fa90f6caad869d9744` matches `dist/dotnote-0.5.2.apk`. Package `dev.dotnote.app`, version **0.6.0 / build 9**.
+
+The emulator reports `ROLE_NOTES` unavailable, so it cannot verify chooser membership or role assignment. Dotnote checks role availability and opens the public default-app settings when supported; AOSP marks NOTES non-requestable. Lenovo's actual default-app chooser, pen shortcut and floating-window behavior must be confirmed on the tablet. [Implementation and acceptance guide](docs/default-notes-app.md).
+
+An initial reused-activity test passed its save/fresh-scene assertions but failed teardown because its synthetic `onNewIntent` replaced the original explicit intent with a bare action, preventing ActivityScenario from recognizing later lifecycle events. It now copies the actual launch intent, and all five tests pass. The widget UI test also now waits for the accessibility title field before editing it; its previous window-readiness race failed twice before that correction. Neither correction changes production behavior.
+
+Versioned APK, source archive and SHA-256 checksums are in `dist/`. Build/test logs are under `/private/tmp/dotnote-toolchain/notes-role-*`; the secure lock-screen screenshot is `notes-role-locked.png` in that directory. Install over the previous build to retain local vaults.
+
+---
+
+# Historical verification · 0.5.2 (build 8)
 
 Validated September 29, 2026 using installed JDK 20 (Java/Kotlin bytecode target 17), Android SDK 36 and the cached Gradle toolchain. Android tests ran on the existing disposable Android 16 / API 36 ARM64 emulator. Physical Lenovo confirmation is pending.
 

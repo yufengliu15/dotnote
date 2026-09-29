@@ -329,6 +329,54 @@ class AppState(application: Application) : AndroidViewModel(application) {
             openNow(created)
         }
 
+    private var systemNoteStarted = false
+    private var systemNoteRequest = 0L
+    internal var systemNoteOpening by mutableStateOf(false)
+        private set
+
+    /** Only the dedicated system-note activity calls this; its UI never renders the library. */
+    internal fun startSystemNote(
+        title: String,
+        restoredVault: String? = null,
+        restoredNote: String? = null,
+        fresh: Boolean = false,
+    ) {
+        // Activity recreation can happen before the queued creation finishes.
+        if (systemNoteStarted && !fresh) return
+        systemNoteStarted = true
+        val request = ++systemNoteRequest
+        systemNoteOpening = true
+        runAction {
+            try {
+                if (fresh) {
+                    check(flush()) {
+                        "The previous quick note could not be saved. Retry to continue."
+                    }
+                    note = null
+                }
+                if (
+                    restoredVault != null &&
+                        restoredNote != null &&
+                        catalog.list().any { it.localId == restoredVault }
+                ) {
+                    check(switchVaultNow(restoredVault)) { "Could not reopen the quick note" }
+                    store.dao.note(restoredNote)?.let {
+                        openNow(it)
+                        if (request == systemNoteRequest) systemNoteOpening = false
+                        return@runAction
+                    }
+                }
+                val created = Note(title = title, folderId = null)
+                store.dao.put(created)
+                openNow(created)
+                tool = Tool.PEN
+                if (request == systemNoteRequest) systemNoteOpening = false
+            } finally {
+                if (request == systemNoteRequest && systemNoteOpening) systemNoteStarted = false
+            }
+        }
+    }
+
     fun open(id: String) = runAction { if (flush()) store.dao.note(id)?.let { openNow(it) } }
 
     private suspend fun openNow(value: Note) {

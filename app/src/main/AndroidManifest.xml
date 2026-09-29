@@ -5,6 +5,17 @@
     <application android:theme="@style/Theme.Dotnote" android:label="Dotnote"
         android:icon="@drawable/ic_launcher" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules"
         android:supportsRtl="true">
+        <activity android:name=".CreateNoteActivity" android:exported="true"
+            android:showWhenLocked="true" android:turnScreenOn="true"
+            android:resizeableActivity="true" android:documentLaunchMode="always"
+            android:taskAffinity="" android:excludeFromRecents="true"
+            android:windowSoftInputMode="adjustResize">
+            <property android:name="android.window.PROPERTY_SUPPORTS_MULTI_INSTANCE_SYSTEM_UI" android:value="true" />
+            <intent-filter>
+                <action android:name="android.intent.action.CREATE_NOTE" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
         <provider android:name=".VaultDocumentsProvider" android:authorities="dev.dotnote.app.vaults" android:exported="true" android:grantUriPermissions="true" android:permission="android.permission.MANAGE_DOCUMENTS">
             <intent-filter><action android:name="android.content.action.DOCUMENTS_PROVIDER" /></intent-filter>
         </provider>

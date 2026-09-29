@@ -2,6 +2,12 @@
 
 An offline, native Kotlin notebook for Android tablets. Built with Jetpack Compose, AndroidX Ink 1.0, Room, and Android's PDF renderer. Works offline without an account. Optional GitHub backups; no subscriptions or analytics.
 
+## 0.6.0 default notes app
+
+Dotnote can now be selected as the default notes app on compatible Android devices, including supported Lenovo tablets. Open the library or note menu → **Set as default notes app**, then select the notes category and Dotnote in Android settings.
+
+System note launches open a fresh drawing note in the current vault. The separate quick-note screen works over the lock screen, keeps existing notes and the library hidden, and uses a scrollable bottom toolbar for narrow floating windows. Notes save normally and appear in the library after unlocking. Tablet chooser and pen-button behavior still need Lenovo confirmation.
+
 ## 0.5.2 GitHub sign-in recovery
 
 Sign-in waits for your return from the GitHub browser page and retries temporary DNS/connection failures using the same device code. The approved token is retained in memory while retrying the account lookup. Install the update, approve GitHub, and return to Dotnote to finish connecting. Tablet confirmation remains pending.
@@ -28,7 +34,7 @@ Start with [docs/README.md](docs/README.md) for the implementation guide: archit
 
 ## Install
 
-Install `dist/dotnote-0.5.2.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
+Install `dist/dotnote-0.6.0.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
 
 Install this APK over the previous Dotnote build to keep your library.
 
@@ -36,6 +42,7 @@ Create a note from the library. Use a stylus to write, one finger to drag or fli
 
 ## Features
 
+- Default Android notes-app registration and private lock-screen quick notes on supported devices.
 - Hidden Android navigation/taskbar, temporarily revealed by swiping up from the bottom; the status bar stays visible.
 - Infinite dot-grid canvas with momentum pan/zoom, return-to-content, and saved camera position.
 - Native Ink pressure pen and a constant-opacity highlighter (repeated strokes do not darken). Whole-stroke eraser; stylus eraser tip/primary button support when reported by Android.
@@ -100,6 +107,7 @@ There is no Android cloud backup. **Uninstalling or clearing app data deletes lo
 - `AppState.kt`: lifecycle-aware editor state and ordered saving.
 - `NotebookView.kt`: native Ink authoring, gesture arbitration, hit testing, viewport rendering.
 - `Rendering.kt`: completed ink, shapes, PDF import/render/export.
+- `CreateNoteActivity.kt`, `DefaultNotes.kt`: system note launches, lock-screen quick editor and default-app settings.
 - `MainActivity.kt`: Compose library, merged editor header, settings and file picker flows.
 - `ColorPicker.kt`: hue/saturation wheel, brightness and hex editing.
 

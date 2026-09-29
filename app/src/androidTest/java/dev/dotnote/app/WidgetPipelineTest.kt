@@ -71,7 +71,12 @@ class WidgetPipelineTest {
             }
             return null
         }
-        val field = find(requireNotNull(instrumentation.uiAutomation.rootInActiveWindow))
+        var field: android.view.accessibility.AccessibilityNodeInfo? = null
+        // The requested-dialog state can update before its accessibility window is published.
+        await {
+            field = instrumentation.uiAutomation.rootInActiveWindow?.let(::find)
+            field != null
+        }
         assertTrue(
             field?.performAction(
                 android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,

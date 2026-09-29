@@ -4,11 +4,14 @@
 
 ## Runtime structure
 
-The app has one Gradle application module, one exported launcher activity, an activity-scoped `AndroidViewModel`, and no custom application class or dependency-injection framework. Production Kotlin is in package `dev.dotnote.app`.
+The app has one Gradle application module, one exported launcher activity plus a separate exported system-note activity, activity-scoped `AndroidViewModel`, and no custom application class or dependency-injection framework. Production Kotlin is in package `dev.dotnote.app`.
 
 ```mermaid
 flowchart TD
     Activity[MainActivity / Compose] --> State[AppState]
+    System[Android CREATE_NOTE] --> Quick[CreateNoteActivity / isolated quick editor]
+    Quick --> QuickState[Separate AppState]
+    QuickState --> Store
     Activity --> Canvas[NotebookView / AndroidX Ink]
     Canvas --> State
     Canvas --> Render[ObjectRenderer / PdfPageSource]
@@ -33,6 +36,8 @@ All paths below are relative to this documentation directory. The table covers e
 | File | Responsibility and principal types |
 | --- | --- |
 | [MainActivity.kt](../app/src/main/java/dev/dotnote/app/MainActivity.kt) | Activity intents and immersive navigation bar; Compose theme, library, editor, toolbar, folder operations, writing settings, Android file-picker launchers |
+| [CreateNoteActivity.kt](../app/src/main/java/dev/dotnote/app/CreateNoteActivity.kt) | Exported Android notes entry point; fresh private quick-note editor, lock-screen launches, independent tasks and configuration restoration |
+| [DefaultNotes.kt](../app/src/main/java/dev/dotnote/app/DefaultNotes.kt) | Notes-role availability/current-holder checks and public default-app settings entry |
 | [AppState.kt](../app/src/main/java/dev/dotnote/app/AppState.kt) | `AppState`; selected store, editor state, save queue, action mutex, settings persistence, vault switching, PDF/backup UI actions |
 | [Document.kt](../app/src/main/java/dev/dotnote/app/Document.kt) | Immutable scene and geometry: `Pt`, `Bounds`, `Transform`, `Camera`, `Item`, `Document`, `Tool`, `History`, `DocumentCodec`, hit tests, folder-cycle validation |
 | [NotebookView.kt](../app/src/main/java/dev/dotnote/app/NotebookView.kt) | Custom `FrameLayout`; native live ink, completed scene, pointer ownership, pan/zoom, selection/eraser/shapes, PDF worker and bitmap cache |

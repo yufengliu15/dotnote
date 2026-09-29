@@ -22,6 +22,7 @@ There is no server, subscription, analytics, handwriting recognition, typed-text
 | [Drawing and input](drawing-and-input.md) | Stylus arbitration, live-to-saved ink, highlighter composition, selection, history |
 | [PDFs and export](pdf-and-export.md) | Attachment import, render caches, page placement, PDF export |
 | [Interface and user flows](ui-and-user-flows.md) | Library, editor, dialogs, settings, persistence expectations |
+| [Default notes app](default-notes-app.md) | Android Notes role, Lenovo selection, fresh quick notes, lock-screen privacy and lifecycle |
 | [Vaults and GitHub backups](vaults-and-github-backups.md) | Authentication, configuration, scheduling, Git protocol, conflicts and restore |
 | [Widgets and ink startup](widgets-and-ink-startup.md) | RemoteViews, size calculations, launch intents, recency, vault rename, latency work |
 | [Build, test, and release](build-test-release.md) | Toolchain, commands, exact test inventory, release checks and emulator caveat |
@@ -42,7 +43,7 @@ For a storage change, read the first three guides and the GitHub guide before ed
 
 ## Current verification status
 
-The [release validation record](../VALIDATION.md) records current build, lint and test results. Version 0.5.2 passes 29 JVM tests and 9 focused Android tests for sign-in lifecycle, vault protocol and scheduling. Earlier drawing/UI suites are documented separately, including the emulator graphics caveat.
+The [release validation record](../VALIDATION.md) records current build, lint and test results. Version 0.6.0 adds default notes-app registration and lock-screen quick notes; current focused verification is recorded in VALIDATION.md. Earlier drawing/UI suites are documented separately, including the emulator graphics caveat.
 
 GitHub sign-in now waits for Dotnote to return to the foreground and retries temporary hostname-resolution failures. Lenovo confirmation and live private-repository backup remain pending in [TODO.md](../TODO.md). Physical stylus latency, OEM palm/button behavior, and Android 17 operation also need device acceptance.
 

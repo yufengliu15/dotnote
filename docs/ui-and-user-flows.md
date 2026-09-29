@@ -24,6 +24,7 @@ Library overflow actions:
 | Label | Action |
 | --- | --- |
 | Vaults | Choose/create/rename/import/export vaults |
+| Set as default notes app | Open Android default-app settings when the Notes role is supported; otherwise explain device unavailability |
 | GitHub backup & restore | Open account and current-vault repository settings |
 | Back up library | Create the legacy ZIP snapshot through Android's save picker |
 | Restore backup (merge) | Open ZIP/octet-stream picker and merge into the current vault |
@@ -92,3 +93,7 @@ Account Disconnect clears local credentials and cancels existing work for all va
 No drawing text tool, OCR/handwriting recognition, audio recording, PDF text search, collaborative editing, automatic device-to-device merge, or attachment gallery is implemented. The UI has no trash recovery or Git historical-version picker. Folder nesting has implementation limits rather than mathematically unlimited depth. Drawing is stylus-first; canvas accessibility is currently a description and click hook, not semantic navigation of every handwritten object.
 
 Do not add network/account requirements to ordinary note creation or editing. Widgets and vault rename work independently of the Lenovo GitHub tablet verification.
+
+## System notes and lock-screen entry
+
+See [default notes app integration](default-notes-app.md). Android CREATE_NOTE launches a separate quick editor rather than the library, using a fresh note in the current vault root. Close saves and finishes the system editor. Its bottom toolbar scrolls in narrow windows; the library, import/export and account menus are absent. Normal launcher/widget flows retain the existing folder-picker and library navigation.

@@ -50,6 +50,29 @@ private val Forest = Color(0xff255a4e)
 private val Paper = Color(0xfff7f7f2)
 private val Ink = Color(0xff25342e)
 
+@Composable
+internal fun DotnoteTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme =
+            lightColorScheme(
+                primary = Forest,
+                onPrimary = Color.White,
+                primaryContainer = Color(0xffdfebdf),
+                background = Paper,
+                surface = Paper,
+                onSurface = Ink,
+                secondary = Forest,
+                secondaryContainer = Color(0xffe7edde),
+                onSecondaryContainer = Forest,
+                surfaceContainer = Color(0xffefefe8),
+                surfaceContainerHigh = Color(0xffefefe8),
+                surfaceContainerHighest = Color(0xffe7eae1),
+                onSurfaceVariant = Color(0xff61705f),
+            ),
+        content = content,
+    )
+}
+
 class MainActivity : ComponentActivity() {
     private var widgetRequest by mutableStateOf<WidgetAction?>(null)
 
@@ -78,24 +101,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         hideNavigationBar()
         setContent {
-            MaterialTheme(
-                colorScheme =
-                    lightColorScheme(
-                        primary = Forest,
-                        onPrimary = Color.White,
-                        primaryContainer = Color(0xffdfebdf),
-                        background = Paper,
-                        surface = Paper,
-                        onSurface = Ink,
-                        secondary = Forest,
-                        secondaryContainer = Color(0xffe7edde),
-                        onSecondaryContainer = Forest,
-                        surfaceContainer = Color(0xffefefe8),
-                        surfaceContainerHigh = Color(0xffefefe8),
-                        surfaceContainerHighest = Color(0xffe7eae1),
-                        onSurfaceVariant = Color(0xff61705f),
-                    )
-            ) {
+            DotnoteTheme {
                 val state: AppState = viewModel()
                 LaunchedEffect(widgetRequest) {
                     widgetRequest?.let { state.widgetAction(it) }
@@ -240,6 +246,7 @@ private fun Library(state: AppState) {
                             restore.launch(arrayOf("application/zip", "application/octet-stream"))
                         },
                     )
+                    DefaultNotesMenuItem { menu = false }
                     DropdownMenuItem(
                         text = { Text("Dotnote version") },
                         onClick = {
@@ -650,7 +657,7 @@ private fun MoveDialog(
 }
 
 @Composable
-private fun Editor(state: AppState) {
+internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() -> Unit)? = null) {
     var canvas by remember { mutableStateOf<NotebookView?>(null) }
     var settings by remember { mutableStateOf(false) }
     var shapes by remember { mutableStateOf(false) }
@@ -686,7 +693,7 @@ private fun Editor(state: AppState) {
     }
     BackHandler {
         canvas?.settle()
-        state.closeNote()
+        if (onClose != null) onClose() else state.closeNote()
     }
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -696,13 +703,17 @@ private fun Editor(state: AppState) {
             IconButton(
                 onClick = {
                     canvas?.settle()
-                    state.closeNote()
+                    if (onClose != null) onClose() else state.closeNote()
                 }
             ) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, "Back to notes")
+                Icon(
+                    if (quickNote) Icons.Outlined.Close else Icons.AutoMirrored.Outlined.ArrowBack,
+                    if (quickNote) "Close quick note" else "Back to notes",
+                )
             }
             Column(
-                (if (state.dock == "Top") Modifier.width(140.dp) else Modifier.weight(1f))
+                (if (!quickNote && state.dock == "Top") Modifier.width(140.dp)
+                    else Modifier.weight(1f))
                     .clickable { rename = true }
                     .padding(horizontal = 8.dp)
             ) {
@@ -720,7 +731,7 @@ private fun Editor(state: AppState) {
                     color = Color(0xff75806f),
                 )
             }
-            if (state.dock == "Top")
+            if (!quickNote && state.dock == "Top")
                 Box(Modifier.weight(1f)) {
                     ToolStrip(
                         state,
@@ -763,73 +774,75 @@ private fun Editor(state: AppState) {
             ) {
                 Icon(Icons.AutoMirrored.Outlined.Redo, "Redo")
             }
-            Box {
-                IconButton(onClick = { overflow = true }) {
-                    Icon(Icons.Outlined.MoreVert, "Note options")
+            if (!quickNote)
+                Box {
+                    IconButton(onClick = { overflow = true }) {
+                        Icon(Icons.Outlined.MoreVert, "Note options")
+                    }
+                    DropdownMenu(overflow, { overflow = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Import PDF") },
+                            leadingIcon = { Icon(Icons.Outlined.PictureAsPdf, null) },
+                            onClick = {
+                                overflow = false
+                                canvas?.settle()
+                                importPdf.launch(arrayOf("application/pdf"))
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("PDF page navigator") },
+                            onClick = {
+                                overflow = false
+                                pages = true
+                            },
+                            enabled = state.document.items.any { it.locked },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Export entire note as PDF") },
+                            onClick = {
+                                overflow = false
+                                canvas?.settle()
+                                exportRegion = null
+                                exportPdf.launch("${state.note?.title}.pdf")
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Export visible area as PDF") },
+                            onClick = {
+                                overflow = false
+                                canvas?.settle()
+                                exportRegion = canvas?.viewport()
+                                exportPdf.launch("${state.note?.title}-selection.pdf")
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Writing settings") },
+                            onClick = {
+                                overflow = false
+                                settings = true
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("How to use Dotnote") },
+                            onClick = {
+                                overflow = false
+                                help = true
+                            },
+                        )
+                        DefaultNotesMenuItem { overflow = false }
+                        DropdownMenuItem(
+                            text = { Text("Dotnote version") },
+                            onClick = {
+                                overflow = false
+                                version = true
+                            },
+                        )
+                    }
                 }
-                DropdownMenu(overflow, { overflow = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Import PDF") },
-                        leadingIcon = { Icon(Icons.Outlined.PictureAsPdf, null) },
-                        onClick = {
-                            overflow = false
-                            canvas?.settle()
-                            importPdf.launch(arrayOf("application/pdf"))
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("PDF page navigator") },
-                        onClick = {
-                            overflow = false
-                            pages = true
-                        },
-                        enabled = state.document.items.any { it.locked },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Export entire note as PDF") },
-                        onClick = {
-                            overflow = false
-                            canvas?.settle()
-                            exportRegion = null
-                            exportPdf.launch("${state.note?.title}.pdf")
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Export visible area as PDF") },
-                        onClick = {
-                            overflow = false
-                            canvas?.settle()
-                            exportRegion = canvas?.viewport()
-                            exportPdf.launch("${state.note?.title}-selection.pdf")
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Writing settings") },
-                        onClick = {
-                            overflow = false
-                            settings = true
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("How to use Dotnote") },
-                        onClick = {
-                            overflow = false
-                            help = true
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Dotnote version") },
-                        onClick = {
-                            overflow = false
-                            version = true
-                        },
-                    )
-                }
-            }
         }
         HorizontalDivider(color = Color(0xffe0e4da))
         Row(Modifier.weight(1f)) {
-            if (state.dock == "Left")
+            if (!quickNote && state.dock == "Left")
                 ToolStrip(
                     state,
                     false,
@@ -912,7 +925,7 @@ private fun Editor(state: AppState) {
                         }
                     }
             }
-            if (state.dock == "Right")
+            if (!quickNote && state.dock == "Right")
                 ToolStrip(
                     state,
                     false,
@@ -921,6 +934,17 @@ private fun Editor(state: AppState) {
                     beforeAction = { canvas?.settle() },
                     onEditColor = { colorSlot = it },
                 )
+        }
+        if (quickNote) {
+            HorizontalDivider(color = Color(0xffe0e4da))
+            ToolStrip(
+                state,
+                true,
+                { settings = true },
+                { shapes = true },
+                { canvas?.settle() },
+                { colorSlot = it },
+            )
         }
     }
     colorSlot?.let { slot ->
