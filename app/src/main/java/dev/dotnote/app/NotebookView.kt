@@ -4,8 +4,11 @@ import android.content.Context
 import android.graphics.*
 import android.util.LruCache
 import android.view.MotionEvent
+import android.view.VelocityTracker
 import android.view.View
+import android.view.ViewConfiguration
 import android.widget.FrameLayout
+import android.widget.OverScroller
 import androidx.ink.authoring.*
 import androidx.ink.brush.Brush
 import androidx.ink.brush.InputToolType
@@ -59,6 +62,14 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
     private var navFocus: Pt? = null
     private var navSpan = 0f
     private var navigation = false
+    private val scrollConfig = ViewConfiguration.get(context)
+    private val scroller = OverScroller(context)
+    private var velocityTracker: VelocityTracker? = null
+    private var flingPointer = -1
+    private var panStart = Pt(0f, 0f)
+    private var panDragged = false
+    private var flingX = 0
+    private var flingY = 0
     private var suppressFingers = false
     private val predictor = MotionEventPredictor.newInstance(this)
     private val content =
@@ -94,7 +105,8 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
     init {
         setWillNotDraw(false)
         isFocusable = true
-        contentDescription = "Note canvas. Write with the stylus, drag to pan, and pinch to zoom."
+        contentDescription =
+            "Note canvas. Write with the stylus, drag or flick to pan, and pinch to zoom."
         addView(content, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(highlights, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
         addView(foreground, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -160,7 +172,101 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
     }
 
     fun settle() {
+        stopNavigationMotion()
         handOff(ink.getFinishedStrokes())
+    }
+
+    private fun clearVelocity() {
+        velocityTracker?.recycle()
+        velocityTracker = null
+        flingPointer = -1
+        panDragged = false
+    }
+
+    private fun stopNavigationMotion() {
+        // forceFinished preserves the displayed position; abortAnimation jumps to the end.
+        scroller.forceFinished(true)
+        clearVelocity()
+    }
+
+    override fun onDetachedFromWindow() {
+        stopNavigationMotion()
+        super.onDetachedFromWindow()
+    }
+
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        super.onWindowFocusChanged(hasWindowFocus)
+        if (!hasWindowFocus) stopNavigationMotion()
+    }
+
+    override fun computeScroll() {
+        super.computeScroll()
+        if (disposed || !scroller.computeScrollOffset()) return
+        val c = state.document.camera
+        // Scroller coordinates are relative screen pixels, independent of zoom and distance
+        // from the canvas origin. The camera stores screen dp, not world coordinates.
+        state.camera(
+            c.copy(
+                x = c.x + (scroller.currX - flingX) / density,
+                y = c.y + (scroller.currY - flingY) / density,
+            )
+        )
+        flingX = scroller.currX
+        flingY = scroller.currY
+        refresh()
+        if (!scroller.isFinished) postInvalidateOnAnimation()
+    }
+
+    private fun trackPan(e: MotionEvent) {
+        // Pinches and pointer handoffs must never turn into a fling when fingers lift.
+        if (
+            e.pointerCount != 1 ||
+                e.getToolType(0) != MotionEvent.TOOL_TYPE_FINGER ||
+                e.flags and MotionEvent.FLAG_CANCELED != 0
+        ) {
+            clearVelocity()
+            return
+        }
+        if (e.actionMasked == MotionEvent.ACTION_DOWN) {
+            clearVelocity()
+            velocityTracker = VelocityTracker.obtain()
+            flingPointer = e.getPointerId(0)
+            panStart = Pt(e.x, e.y)
+        }
+        val tracker = velocityTracker ?: return
+        tracker.addMovement(e)
+        if (
+            e.actionMasked == MotionEvent.ACTION_MOVE &&
+                hypot(e.x - panStart.x, e.y - panStart.y) > scrollConfig.scaledTouchSlop
+        ) {
+            panDragged = true
+        }
+        if (e.actionMasked == MotionEvent.ACTION_UP) {
+            if (panDragged) {
+                tracker.computeCurrentVelocity(
+                    1000,
+                    scrollConfig.scaledMaximumFlingVelocity.toFloat(),
+                )
+                val vx = tracker.getXVelocity(flingPointer)
+                val vy = tracker.getYVelocity(flingPointer)
+                if (max(abs(vx), abs(vy)) >= scrollConfig.scaledMinimumFlingVelocity) {
+                    flingX = 0
+                    flingY = 0
+                    scroller.fling(
+                        0,
+                        0,
+                        vx.toInt(),
+                        vy.toInt(),
+                        Int.MIN_VALUE,
+                        Int.MAX_VALUE,
+                        Int.MIN_VALUE,
+                        Int.MAX_VALUE,
+                    )
+                    postInvalidateOnAnimation()
+                }
+            }
+            clearVelocity()
+        }
     }
 
     private fun recordInputs(event: MotionEvent, index: Int) {
@@ -221,6 +327,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
     }
 
     fun page(item: Item) {
+        settle()
         val b = item.bounds
         val w = width / density
         val h = height / density
@@ -381,15 +488,18 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
     override fun onInterceptTouchEvent(ev: MotionEvent) = true
 
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (disposed) return false
         parent?.requestDisallowInterceptTouchEvent(true)
         val action = event.actionMasked
         val index = event.actionIndex
         if (action == MotionEvent.ACTION_CANCEL) {
+            stopNavigationMotion()
             cancelGesture(event)
             navigation = false
             return true
         }
         if (action == MotionEvent.ACTION_DOWN) {
+            stopNavigationMotion()
             suppressFingers = false
             navigation = false
             navFocus = null
@@ -670,6 +780,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
     }
 
     private fun navigate(e: MotionEvent) {
+        trackPan(e)
         if (
             e.actionMasked == MotionEvent.ACTION_UP ||
                 e.actionMasked == MotionEvent.ACTION_POINTER_UP

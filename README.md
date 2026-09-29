@@ -2,7 +2,11 @@
 
 An offline, native Kotlin notebook for Android tablets. Built with Jetpack Compose, AndroidX Ink 1.0, Room, and Android's PDF renderer. Works offline without an account. Optional GitHub backups; no subscriptions or analytics.
 
-## 0.4.1 drawing update
+## 0.5.0 momentum scrolling
+
+Flick with one finger to coast through PDFs and across the canvas. Faster flicks travel farther and slow down naturally. Touch the canvas again to stop immediately. Pinch zoom and drawing stay precise; with finger drawing enabled, select the Hand tool to flick.
+
+## Previous drawing update
 
 Highlighter drawing now appends live geometry in bounded chunks, avoids interactive path unions, and redraws separately from PDFs and finished pen strokes. Saving a stroke no longer builds a duplicate native mesh. Native Ink warms before writing; actual first-stroke latency still needs confirmation on the Galaxy Tab S6 Lite.
 
@@ -14,16 +18,16 @@ Start with [docs/README.md](docs/README.md) for the implementation guide: archit
 
 ## Install
 
-Install `dist/dotnote-0.4.1.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
+Install `dist/dotnote-0.5.0.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
 
 Install this APK over the previous Dotnote build to keep your library.
 
-Create a note from the library. Use a stylus to write, one finger to pan, and two fingers to zoom. If your pen is treated as a finger by the device, turn on **Writing settings → Draw with a finger**. Return to all your content with the focus button at the bottom right.
+Create a note from the library. Use a stylus to write, one finger to drag or flick, and two fingers to zoom. If your pen is treated as a finger by the device, turn on **Writing settings → Draw with a finger**. Return to all your content with the focus button at the bottom right.
 
 ## Features
 
 - Hidden Android navigation/taskbar, temporarily revealed by swiping up from the bottom; the status bar stays visible.
-- Infinite dot-grid canvas with pan/zoom, return-to-content, and saved camera position.
+- Infinite dot-grid canvas with momentum pan/zoom, return-to-content, and saved camera position.
 - Native Ink pressure pen and a constant-opacity highlighter (repeated strokes do not darken). Whole-stroke eraser; stylus eraser tip/primary button support when reported by Android.
 - Tools share the note header, with optional left/right docking. Long-press any of six color slots for a hue/saturation wheel, brightness slider, or hex entry; slots persist across sessions. Adjustable widths and persistent preferences.
 - Lines, arrows, rectangles, squares, ellipses, circles, and grids with 1–30 rows/columns.

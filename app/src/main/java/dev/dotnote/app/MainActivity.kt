@@ -857,7 +857,7 @@ private fun Editor(state: AppState) {
                         color = Color(0xffeef1e7),
                     ) {
                         Text(
-                            "Write with your pen. Drag with a finger. Pinch to zoom.",
+                            "Write with your pen. Drag or flick with a finger. Pinch to zoom.",
                             Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
                             fontSize = 12.sp,
                             color = Forest,
@@ -1014,7 +1014,7 @@ private fun Editor(state: AppState) {
             title = { Text("Make yourself at home") },
             text = {
                 Text(
-                    "Write with your stylus; fingers pan and pinch to zoom. Enable finger drawing in settings if needed.\n\nSelect a shape and drag to draw it. The grid's rows and columns are adjustable.\n\nUse Select to circle objects or tap one. Drag the selection to move it; drag its bottom-right handle to resize.\n\nPDF pages stay locked underneath your writing. Use the page navigator to jump through a document.\n\nNotes save automatically. Back up your library from the home screen menu. Uninstalling removes local notes."
+                    "Write with your stylus; drag or flick with one finger to pan, and pinch to zoom. Faster flicks coast farther; touch the canvas to stop. Enable finger drawing in settings if needed, then use Hand for flick scrolling.\n\nSelect a shape and drag to draw it. The grid's rows and columns are adjustable.\n\nUse Select to circle objects or tap one. Drag the selection to move it; drag its bottom-right handle to resize.\n\nPDF pages stay locked underneath your writing. Use the page navigator to jump through a document.\n\nNotes save automatically. Back up your library from the home screen menu. Uninstalling removes local notes."
                 )
             },
             confirmButton = { TextButton(onClick = { help = false }) { Text("Got it") } },

@@ -15,7 +15,7 @@ Pen and marker brush families are lazily cached stock AndroidX families (`pressu
 | Stylus/eraser down with no owned pointer | Owns the gesture and suppresses palm/finger effects until the gesture ends |
 | Eraser tool type or primary stylus button at begin | Overrides selected tool with whole-stroke eraser |
 | Stylus with Hand selected | Enters navigation instead of drawing |
-| One finger, default settings | Pans |
+| One finger, default settings | Pans, then coasts after a flick |
 | One finger with finger drawing enabled and non-Hand tool | Begins that drawing/editing tool |
 | Two or more fingers without stylus ownership | Cancels an owned finger drawing gesture and enters pan/pinch navigation |
 | Extra finger while stylus owns gesture | Does not draw or move camera |
@@ -81,6 +81,8 @@ Selection actions recolor unlocked items, delete selected items, or clear select
 ## Camera, grid and draw order
 
 Navigation uses average pointer focus and the first two pointers' span. It zooms around the previous focus, then translates by focus delta. Pointer-count changes reset span/focus to avoid jumps. Camera updates save after a 350 ms debounce.
+
+Single-finger pans use Android `VelocityTracker` and `OverScroller` for platform fling physics. A gesture must exceed touch slop and the system minimum fling speed; velocity is capped at the system maximum. Relative pixel offsets are converted to camera dp each frame, so motion is independent of zoom and large world coordinates. The infinite canvas has no artificial PDF-edge boundary. Two-finger gestures disable fling until a fresh down; stylus navigation, finger drawing, taps and cancelled gestures never launch momentum. A fresh touch, `settle()`, page jump, fit, window focus loss, detach or release stops motion at its current position. Existing editor lifecycle handling calls `settle()` before saving on stop.
 
 `fit()` frames document bounds with margin, using zoom `0.08..2`; an empty scene uses an 800×700 fallback. PDF page navigation frames that page with zoom `0.08..4`. Manual pinch permits `0.08..8`.
 

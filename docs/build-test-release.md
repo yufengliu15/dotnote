@@ -14,7 +14,7 @@ Use a full JDK 17 and an Android SDK with platform 36 plus compatible build tool
 | KSP | 2.2.21-2.0.4 |
 | Java/Kotlin bytecode | 17 |
 | Package / namespace | `dev.dotnote.app` |
-| App version | code 5, name `0.4.1` |
+| App version | code 6, name `0.5.0` |
 | Android support | minimum API 29 (Android 10), compile/target API 36 (Android 16) |
 | Compose BOM | 2025.12.00 |
 | Activity Compose | 1.12.1 |
@@ -64,13 +64,14 @@ Tests are in [`app/src/test/java/dev/dotnote/app/`](../app/src/test/java/dev/dot
 
 These are ordinary JUnit tests with a JVM `org.json` dependency. Native Android Ink rendering, actual Room/WorkManager, Views and PDF APIs require instrumentation; a passing JVM suite cannot establish those behaviors.
 
-## Test inventory: 20 Android tests
+## Test inventory: 23 Android tests
 
 Tests are in [`app/src/androidTest/java/dev/dotnote/app/`](../app/src/androidTest/java/dev/dotnote/app/).
 
 | Class | Count | Test methods and coverage |
 | --- | --- | --- |
 | `NativePipelineTest` | 2 | `nativeInkSurvivesSerializationAndRenders`; `pdfImportExportBackupRestoreAndFailedRestoreAreConsistent` |
+| `FlingNavigationTest` | 3 | 40-page PDF fling, speed/direction/zoom, decay and saved camera; touch/stylus/page/fit/release interruption; slow/cancelled/pinch/drawing exclusion |
 | `GesturePipelineTest` | 1 | `stylusCoordinatesUndoAndReopenSurviveZoom`: synthetic stylus at 200% zoom, pen/highlighter, save/reopen and history |
 | `EditorUpdateTest` | 3 | `repeatedHighlightsKeepOpacityAfterReopen`; `pdfHighlightsStayTranslucentAndDoNotAccumulate`; `paletteLongPressPersistsAndSelectionPickerSupportsUndo` |
 | `VaultPipelineTest` | 4 | `filesRebuildIndexAndPreserveMovedNotes`; `interruptedFileTransactionReplaysBeforeReading`; `androidFilesProviderImportsNestedVaultWithoutChangingSource`; `gitBackupRestoreNoChangeAndConflictRecovery` |
@@ -91,6 +92,7 @@ adb shell am instrument -w -e class dev.dotnote.app.WidgetPipelineTest dev.dotno
 adb shell am instrument -w -e class dev.dotnote.app.InkStartupTest dev.dotnote.app.test/androidx.test.runner.AndroidJUnitRunner
 adb shell am instrument -w -e class dev.dotnote.app.EditorUpdateTest dev.dotnote.app.test/androidx.test.runner.AndroidJUnitRunner
 adb shell am instrument -w -e class dev.dotnote.app.GesturePipelineTest dev.dotnote.app.test/androidx.test.runner.AndroidJUnitRunner
+adb shell am instrument -w -e class dev.dotnote.app.FlingNavigationTest dev.dotnote.app.test/androidx.test.runner.AndroidJUnitRunner
 ```
 
 The headless SwiftShader environment crashed in Android `libhwui.so` when several UI classes ran sequentially in one process. The validated emulator used:

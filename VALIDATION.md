@@ -1,4 +1,25 @@
-# Verification · 0.4.1 (build 5)
+# Verification · 0.5.0 (build 6)
+
+Validated September 29, 2026 on the existing Android 16 / API 36 ARM64 tablet emulator (1280 × 800), using the documented `skiagl` backend. Physical tablet scrolling feel and large-document frame rates remain unverified.
+
+- Debug APK and instrumentation APK: built successfully. Build used the installed JDK 20 with Java/Kotlin bytecode target 17, Android SDK 36, and the existing Gradle wrapper.
+- JVM tests: **14 passed**, 0 failures.
+- Focused Android tests: **12 passed** in separate instrumentation processes: FlingNavigationTest (3), GesturePipelineTest (1), NativePipelineTest (2), EditorUpdateTest (3), InkStartupTest (1), HighlighterPerformanceTest (2). Storage, Git and widget suites were not rerun for this navigation update.
+- Android lint: **0 errors, 35 warnings**, including dependency-update notices, optional KTX suggestions, widget API-level attributes and the existing custom-canvas accessibility warning.
+- Fling coverage: imported 40-page PDF; post-release movement in both vertical directions; faster flick travels farther; stable horizontal position and zoom at 1×/2×; natural deceleration; final camera survives closing/reopening. Tests exercise an offset far from the canvas origin and nonzero pointer IDs.
+- Interruption coverage: new touch, stylus drawing, page jump, fit and view release stop momentum. Slow drag, cancelled touch/up, pinch followed by pointer lift, and finger drawing do not fling. Hand mode supports flicking with finger drawing enabled.
+- Existing drawing/export regressions pass. First-stroke emulator measurement: **32 ms dispatch / 204 ms screenshot-observed visibility**. Highlighter synthetic software frames: median **4.635 ms**, p95 **6.092 ms**. These are emulator checks, not physical-device performance claims.
+- APK signature verifies and certificate matches `dist/dotnote-0.4.1.apk`. Package remains `dev.dotnote.app`; version code **6**, version name **0.5.0**. Install over the prior build without uninstalling or clearing data.
+
+Momentum uses Android's built-in `VelocityTracker`, `ViewConfiguration` thresholds and `OverScroller` deceleration; no new library dependency. Frame updates apply relative screen-pixel movement to the camera in dp. The existing infinite canvas remains unbounded. Pinch gestures deliberately do not coast on release. Window focus loss, detach, and the editor's existing stop/save lifecycle also cancel momentum.
+
+Tablet acceptance: open a large PDF, compare gentle and fast one-finger flicks, touch to stop, pinch and write, then reopen the note to check position. With finger drawing enabled, use Hand for flick navigation.
+
+Commands and test inventory: [docs/build-test-release.md](docs/build-test-release.md).
+
+---
+
+# Historical verification · 0.4.1 (build 5)
 
 Validated September 29, 2026 on the existing Android 16 / API 36 ARM64 tablet emulator (1280 × 800). Physical Galaxy Tab S6 Lite performance is **not yet verified**.
 
