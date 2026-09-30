@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.0 — 2026-09-30
+
+- Replaced the Pan toolbar button with Text: add/edit multiline Unicode text, adjust font size, and select/move/resize/recolor/delete it with undo/redo. Text persists through reopening and backups and renders in PDF exports. Finger pan/fling and pinch remain available.
+- Added template notes: create a template or mark an existing note with Use as template, then start independent notes from it in any folder of the selected vault. Copies retain attachments, layout, camera and grid settings with fresh note/object IDs.
+- Added backward-compatible template metadata and Room schema 1→2 migration; existing notes default to ordinary notes. Text objects require app 0.9.0 or later. Android versionCode: 14.
+
 ## 0.8.1 — 2026-09-30
 
 - Fixed image-heavy PowerPoint import by rendering and writing one slide at a time; removed the cumulative decoded-image limit. Reused archive parts no longer count repeatedly toward the expanded-size limit.

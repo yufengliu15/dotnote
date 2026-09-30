@@ -11,3 +11,7 @@ __pycache__/
 # Local release artifacts; publish through releases when needed.
 dist/*.apk
 dist/*.zip
+dist/SHA256SUMS-0.9.0
+dist/release-0.9.0.json
+dist/preview/text-dialog-0.9.0.png
+dist/preview/template-dialog-0.9.0.png

@@ -66,7 +66,7 @@ enum class Tool(val label: String) {
     HIGHLIGHTER("Highlighter"),
     ERASER("Eraser"),
     LASSO("Select"),
-    HAND("Pan"),
+    TEXT("Text"),
     LINE("Line"),
     ARROW("Arrow"),
     RECTANGLE("Rectangle"),
@@ -89,11 +89,15 @@ data class Item(
     val asset: String? = null,
     val page: Int = 0,
     val image: Boolean = false,
+    val text: String? = null,
+    val fontSize: Float = 24f,
 ) {
     val bounds: Bounds =
         transform
             .map(Bounds.of(points))
-            .outset(if (kind == "PDF") 0f else width * max(transform.sx, transform.sy))
+            .outset(
+                if (kind == "PDF" || kind == "TEXT") 0f else width * max(transform.sx, transform.sy)
+            )
     val locked
         get() = kind == "PDF" && !image
 }
@@ -217,7 +221,7 @@ fun shapeSegments(item: Item): List<Pair<Pt, Pt>> {
 
 fun hitItem(item: Item, p: Pt, radius: Float): Boolean {
     if (item.locked || !item.bounds.outset(radius).contains(p)) return false
-    if (item.image) return true
+    if (item.image || item.kind == "TEXT") return true
     val tolerance = radius + item.width * max(item.transform.sx, item.transform.sy) / 2
     val pts = item.points.map(item.transform::map)
     if (pts.size == 1) return hypot(p.x - pts[0].x, p.y - pts[0].y) <= tolerance
@@ -227,7 +231,8 @@ fun hitItem(item: Item, p: Pt, radius: Float): Boolean {
 
 fun lassoHits(item: Item, polygon: List<Pt>): Boolean {
     if (item.locked || polygon.size < 3) return false
-    if (!item.image) return item.points.any { insidePolygon(item.transform.map(it), polygon) }
+    if (!item.image && item.kind != "TEXT")
+        return item.points.any { insidePolygon(item.transform.map(it), polygon) }
     val b = item.bounds
     return polygon.any(b::contains) ||
         listOf(Pt(b.left, b.top), Pt(b.right, b.top), Pt(b.right, b.bottom), Pt(b.left, b.bottom))
@@ -259,7 +264,13 @@ object DocumentCodec {
             .put("cols", i.cols)
             .put("asset", i.asset)
             .put("page", i.page)
-            .apply { if (i.image) put("image", true) }
+            .apply {
+                if (i.image) put("image", true)
+                if (i.kind == "TEXT") {
+                    put("text", i.text)
+                    put("fontSize", i.fontSize)
+                }
+            }
 
     fun decode(text: String): Document {
         val o = JSONObject(text)
@@ -272,7 +283,7 @@ object DocumentCodec {
                 val t = i.getJSONArray("transform")
                 val pts = i.getJSONArray("points")
                 val kind = i.getString("kind")
-                require(kind == "PDF" || Tool.entries.any { it.name == kind }) {
+                require(kind == "PDF" || kind == "HAND" || Tool.entries.any { it.name == kind }) {
                     "Unknown object type"
                 }
                 val asset = if (i.has("asset")) i.getString("asset") else null
@@ -281,6 +292,16 @@ object DocumentCodec {
                 }
                 val width = i.getDouble("width").toFloat()
                 val image = i.optBoolean("image", false)
+                val content = if (kind == "TEXT") i.getString("text") else null
+                val fontSize = i.optDouble("fontSize", 24.0).toFloat()
+                if (kind == "TEXT") {
+                    require(content != null && content.isNotBlank() && content.length <= 10000) {
+                        "Invalid text content"
+                    }
+                    require(fontSize.isFinite() && fontSize in 8f..144f && pts.length() == 2) {
+                        "Invalid text dimensions"
+                    }
+                }
                 require(!image || (kind == "PDF" && asset != null)) { "Invalid image attachment" }
                 require(width.isFinite() && width in .1f..100f)
                 val transform = Transform(t.finite(0), t.finite(1), t.finite(2), t.finite(3))
@@ -302,6 +323,8 @@ object DocumentCodec {
                     asset = asset,
                     page = i.getInt("page").also { require(it >= 0) },
                     image = image,
+                    text = content,
+                    fontSize = fontSize,
                 )
             }
         require(items.map { it.id }.distinct().size == items.size) { "Duplicate object IDs" }

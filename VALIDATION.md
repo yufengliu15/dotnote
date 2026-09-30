@@ -1,3 +1,20 @@
+# 0.9.0 text and template validation
+
+Validated September 30, 2026 with the cached JDK 20 / Android SDK 36 toolchain and the existing disposable Android 16 / API 36 ARM64 tablet emulator (1280×800, skiagl). App version **0.9.0 / code 14**.
+
+- Debug app and instrumentation APK assembly, compilation, all **37 JVM tests**, and lint passed. Lint: **0 errors, 39 warnings** (dependency/update, XML/layout, preferences and canvas accessibility suggestions); no warning originates in the new text/dialog implementation. `git diff --check` passed.
+- **41 focused Android tests passed** in separate instrumentation invocations: TextTemplateTest (5), NativePipelineTest (2), VaultPipelineTest (4), VaultLifecycleTest (3), GesturePipelineTest (2), EditorUpdateTest (3), FlingNavigationTest (3), HighlighterPerformanceTest (2), VectorPerformanceTest (2), InkStartupTest (1), WidgetPipelineTest (4), NotesRoleTest (5), DocumentImportPipelineTest (5). Calendar and GitHub sign-in lifecycle tests were not rerun.
+- New coverage exercises real stylus/finger text taps at 200% zoom, cancellation, rotation, accessible dialog entry/save, editing with a stable object ID, selection/movement/resizing/recolor/deletion, undo/redo/reopen, Unicode multiline screen and PDF rendering, template creation/picker UI, source/copy independence with fresh IDs, shared PDF attachments, grid/camera retention, file-to-index rebuild, ZIP backup/restore metadata, and non-destructive Room schema 1→2 migration. Existing notes default to non-templates; no app data was cleared.
+- Existing drawing, large-deck import, selectable-image, native-ink, vault/Git snapshot, widget and quick-note regressions passed. The initial new UI test raced the dialog accessibility window; it now waits for an editable field. The legacy-vault fixture now registers the same migration as production. Both corrected tests passed; these were test setup failures, not destructive migration workarounds.
+
+Release source: focused branch `codex/text-templates-0.9.0`, starting from a clean working tree. The validated changes are committed locally before packaging; no tag or push is claimed. `scripts/package-release.py` verifies app metadata, documentation, increasing versionCode and certificate compatibility, then packages `dist/dotnote-0.9.0.apk`, `dist/dotnote-0.9.0-source.zip`, `dist/SHA256SUMS-0.9.0` and `dist/release-0.9.0.json`. The manifest identifies the exact source commit, clean source state and artifact hashes. Debug certificate SHA-256: `825739c9e1b77f0276094938143f07b6a51e636344c076fa90f6caad869d9744`, matching the previous distributable.
+
+Evidence: `/private/tmp/dotnote-0.9.0-final-build.log`, `/private/tmp/dotnote-0.9.0-text-template-tests.log`, and the class-named `/private/tmp/dotnote-0.9.0-*.log` regression results. UI captures: `dist/preview/text-dialog-0.9.0.png` and `dist/preview/template-dialog-0.9.0.png`.
+
+Physical tablet/keyboard/OEM stylus behavior remains unverified. Text uses the device's installed fonts and a maximum line width of 4,096 world units; older builds cannot read notes containing the new TEXT kind. Templates are reusable editable notes within a vault; selecting a different vault offers that vault's templates. Existing source notes/files and historical artifacts are retained.
+
+---
+
 # 0.8.1 import and image-selection fixes
 
 Validated September 30, 2026 with JDK 20 (bytecode target 17), Android SDK 36 and the disposable Android 16 / API 36 ARM64 emulator. Current application metadata is **0.8.1 / code 13**. The import feature baseline is 0.8.0; the initial metadata mistake is preserved in the historical record below and explained in CHANGELOG.md.

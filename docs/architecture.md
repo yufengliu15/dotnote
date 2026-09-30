@@ -42,6 +42,7 @@ All paths below are relative to this documentation directory. The table covers e
 | [Document.kt](../app/src/main/java/dev/dotnote/app/Document.kt) | Immutable scene and geometry: `Pt`, `Bounds`, `Transform`, `Camera`, `Item`, `Document`, `Tool`, `History`, `DocumentCodec`, hit tests, folder-cycle validation |
 | [NotebookView.kt](../app/src/main/java/dev/dotnote/app/NotebookView.kt) | Custom `FrameLayout`; native live ink, completed scene, pointer ownership, pan/zoom, selection/eraser/shapes, PDF worker and bitmap cache |
 | [Rendering.kt](../app/src/main/java/dev/dotnote/app/Rendering.kt) | Brush families, input serialization, `ObjectRenderer`, `PdfPageSource`, `PdfFiles.import/export`, Android matrix conversions |
+| [TextTool.kt](../app/src/main/java/dev/dotnote/app/TextTool.kt) | Note-scoped text drafts/dialog, StaticLayout measurement and text item construction |
 | [ColorPicker.kt](../app/src/main/java/dev/dotnote/app/ColorPicker.kt) | Shared hue/saturation wheel, brightness slider, hex input, opaque selected color |
 | [Store.kt](../app/src/main/java/dev/dotnote/app/Store.kt) | Room entities/DAO/database; `Store` initialization, old database migration, file-to-index rebuild, legacy ZIP backup/restore |
 | [FileLibraryDao.kt](../app/src/main/java/dev/dotnote/app/FileLibraryDao.kt) | `LibraryDao` wrapper: files first, index second; mutation locking, no-op suppression, recency metadata updates |

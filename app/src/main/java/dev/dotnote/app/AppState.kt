@@ -63,6 +63,49 @@ class AppState(application: Application) : AndroidViewModel(application) {
     var message by mutableStateOf<String?>(null)
     var importReport by mutableStateOf<String?>(null)
     var tool by mutableStateOf(Tool.PEN)
+    var textEdit by mutableStateOf<TextEditRequest?>(null)
+        private set
+
+    var textSize by mutableFloatStateOf(24f)
+
+    fun requestText(position: Pt) {
+        val current = note ?: return
+        if (busy) return
+        val existing =
+            document.items.lastOrNull {
+                it.kind == "TEXT" && hitItem(it, position, 4f / document.camera.zoom)
+            }
+        textEdit = TextEditRequest(current.id, existing, position, color, textSize)
+    }
+
+    fun dismissText() {
+        textEdit = null
+    }
+
+    fun applyText(content: String, size: Float) {
+        val request = textEdit ?: return
+        if (note?.id != request.noteId) {
+            dismissText()
+            return
+        }
+        require(content.isNotBlank() && content.length <= 10000)
+        require(size.isFinite() && size in 8f..144f)
+        val item = textItem(content, size, request.color, request.position, request.item)
+        commit(
+            if (request.item == null) document.items + item
+            else document.items.map { if (it.id == item.id) item else it }
+        )
+        textSize = size
+        dismissText()
+    }
+
+    fun deleteText() {
+        val request = textEdit ?: return
+        if (note?.id == request.noteId && request.item != null)
+            commit(document.items.filterNot { it.id == request.item.id })
+        dismissText()
+    }
+
     var color by mutableIntStateOf(preferences.getInt("color", 0xff25342e.toInt()))
     var palette by
         mutableStateOf(
@@ -193,6 +236,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
             .put("palette", JSONArray(palette))
             .put("color", color)
             .put("width", strokeWidth)
+            .put("textSize", textSize)
             .put("rows", rows)
             .put("cols", cols)
             .put("finger", fingerDrawing)
@@ -227,6 +271,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
             palette = List(6) { a.getInt(it) or 0xff000000.toInt() }
             color = o.getInt("color")
             strokeWidth = o.getDouble("width").toFloat().coerceIn(1f, 12f)
+            textSize = o.optDouble("textSize", 24.0).toFloat().coerceIn(8f, 144f)
             rows = o.getInt("rows").coerceIn(1, 30)
             cols = o.getInt("cols").coerceIn(1, 30)
             fingerDrawing = o.getBoolean("finger")
@@ -319,16 +364,57 @@ class AppState(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun createNote(title: String, destination: String? = folderId, vault: String = store.vaultId) =
-        runAction {
-            if (!flush() || !switchVaultNow(vault)) return@runAction
-            require(destination == null || store.dao.allFolders().any { it.id == destination }) {
-                "The selected folder no longer exists"
-            }
-            val created = Note(title = title.trim().ifEmpty { "Untitled" }, folderId = destination)
-            store.dao.put(created)
-            openNow(created)
+    suspend fun vaultTemplates(id: String): List<NoteSummary> {
+        vaultFolders(id)
+        return openedStores.getValue(id).dao.templates()
+    }
+
+    fun setTemplate(enabled: Boolean) = runAction {
+        if (!flush()) return@runAction
+        val current = note ?: return@runAction
+        val latest = store.dao.note(current.id) ?: return@runAction
+        val updated = latest.copy(isTemplate = enabled, modified = System.currentTimeMillis())
+        store.dao.put(updated)
+        note = updated
+        message = if (enabled) "Template available in New note" else "Note removed from templates"
+    }
+
+    fun createNote(
+        title: String,
+        destination: String? = folderId,
+        vault: String = store.vaultId,
+        templateId: String? = null,
+        isTemplate: Boolean = false,
+    ) = runAction {
+        if (!flush() || !switchVaultNow(vault)) return@runAction
+        require(destination == null || store.dao.allFolders().any { it.id == destination }) {
+            "The selected folder no longer exists"
         }
+        val source =
+            templateId?.let { id ->
+                requireNotNull(store.dao.note(id)?.takeIf { it.isTemplate }) {
+                    "The selected template no longer exists"
+                }
+            }
+        val content =
+            withContext(Dispatchers.IO) {
+                val copied =
+                    source?.let {
+                        val decoded = DocumentCodec.decode(it.document)
+                        decoded.copy(items = decoded.items.map { item -> item.copy(id = newId()) })
+                    } ?: Document()
+                DocumentCodec.encode(copied)
+            }
+        val created =
+            Note(
+                title = title.trim().ifEmpty { "Untitled" },
+                folderId = destination,
+                document = content,
+                isTemplate = isTemplate,
+            )
+        store.dao.put(created)
+        openNow(created)
+    }
 
     private var systemNoteStarted = false
     private var systemNoteRequest = 0L
@@ -383,6 +469,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
     private suspend fun openNow(value: Note) {
         val decoded = withContext(Dispatchers.IO) { DocumentCodec.decode(value.document) }
         note = value
+        textEdit = null
         folderId = value.folderId
         document = decoded
         history = History()
@@ -413,6 +500,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
     fun closeNote() = runAction {
         if (flush()) {
             note = null
+            textEdit = null
             selection = emptySet()
         }
     }
@@ -488,10 +576,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
         val id = note?.id ?: return@runAction
         val destination = store
         val top = document.bounds?.bottom?.plus(48f) ?: 0f
-        val imported =
-            withContext(Dispatchers.IO) {
-                DocumentImport.import(destination, uri, top)
-            }
+        val imported = withContext(Dispatchers.IO) { DocumentImport.import(destination, uri, top) }
         if (note?.id == id && store === destination) {
             commit(document.items + imported.items)
             message = imported.message

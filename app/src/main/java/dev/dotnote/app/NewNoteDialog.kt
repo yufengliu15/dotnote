@@ -21,6 +21,10 @@ fun NewNoteDialog(state: AppState, onDismiss: () -> Unit) {
     var title by rememberSaveable { mutableStateOf("") }
     var vault by rememberSaveable { mutableStateOf(state.store.vaultId) }
     var folder by rememberSaveable { mutableStateOf(state.folderId) }
+    var templateId by rememberSaveable { mutableStateOf<String?>(null) }
+    var isTemplate by rememberSaveable { mutableStateOf(false) }
+    var templateMenu by remember { mutableStateOf(false) }
+    var templates by remember { mutableStateOf(emptyList<NoteSummary>()) }
     var vaultMenu by remember { mutableStateOf(false) }
     var vaults by remember { mutableStateOf(emptyList<VaultInfo>()) }
     var folders by remember { mutableStateOf(emptyList<Folder>()) }
@@ -29,9 +33,12 @@ fun NewNoteDialog(state: AppState, onDismiss: () -> Unit) {
     LaunchedEffect(vault) {
         loading = true
         error = null
+        templates = emptyList()
         try {
             vaults = withContext(Dispatchers.IO) { state.catalog.list() }
             folders = state.vaultFolders(vault)
+            templates = state.vaultTemplates(vault)
+            if (templates.none { it.id == templateId }) templateId = null
             if (folder != null && folders.none { it.id == folder }) folder = null
         } catch (e: Exception) {
             if (e is CancellationException) throw e
@@ -72,11 +79,56 @@ fun NewNoteDialog(state: AppState, onDismiss: () -> Unit) {
                                 onClick = {
                                     vault = item.localId
                                     folder = null
+                                    templateId = null
+                                    loading = true
                                     vaultMenu = false
                                 },
                             )
                         }
                     }
+                }
+                Box {
+                    OutlinedButton(
+                        onClick = { templateMenu = true },
+                        enabled = !loading,
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            templates.find { it.id == templateId }?.title ?: "Blank note",
+                            Modifier.weight(1f),
+                        )
+                        Icon(Icons.Outlined.ExpandMore, "Choose template")
+                    }
+                    DropdownMenu(templateMenu, { templateMenu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Blank note") },
+                            onClick = {
+                                templateId = null
+                                templateMenu = false
+                            },
+                        )
+                        templates.forEach { template ->
+                            DropdownMenuItem(
+                                text = {
+                                    Column {
+                                        Text(template.title)
+                                        Text(
+                                            folderPath(template.folderId, folders),
+                                            style = MaterialTheme.typography.bodySmall,
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    templateId = template.id
+                                    templateMenu = false
+                                },
+                            )
+                        }
+                    }
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(isTemplate, { isTemplate = it })
+                    Text("Create as template", Modifier.clickable { isTemplate = !isTemplate })
                 }
                 Text(
                     "Folder: ${folderPath(folder, folders)}",
@@ -119,7 +171,7 @@ fun NewNoteDialog(state: AppState, onDismiss: () -> Unit) {
             TextButton(
                 enabled = title.isNotBlank() && !loading && error == null && !state.busy,
                 onClick = {
-                    state.createNote(title, folder, vault)
+                    state.createNote(title, folder, vault, templateId, isTemplate)
                     onDismiss()
                 },
             ) {

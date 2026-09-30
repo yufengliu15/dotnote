@@ -20,7 +20,7 @@ Each system launch creates a blank drawing note with a timestamp title at the ro
 
 Rotation retains the current quick note and history through its ViewModel. After process death, an unlocked recreation can reopen the quick note identified by the activity's saved state; a locked recreation creates a fresh note. Closing flushes the current note before finishing. The shared editor also saves on stop. Quick notes use the normal file-backed storage, local recency, and backup scheduling, and can be opened later from the unlocked library.
 
-The ordinary `MainActivity` is not permitted over the lock screen. The quick-note activity does not dismiss the keyguard. This implements the fresh-note privacy approach in Android's [note-taking app guidance](https://developer.android.com/develop/ui/compose/touch-input/stylus-input/create-a-note-taking-app). The feature creates handwriting/drawing notes; it does not add a typed-text tool or screenshot annotation integration.
+The ordinary `MainActivity` is not permitted over the lock screen. The quick-note activity does not dismiss the keyguard. This implements the fresh-note privacy approach in Android's [note-taking app guidance](https://developer.android.com/develop/ui/compose/touch-input/stylus-input/create-a-note-taking-app). The feature creates fresh notes with handwriting/drawing and the shared Text tool; screenshot annotation integration is not implemented.
 
 ## Verification and device acceptance
 

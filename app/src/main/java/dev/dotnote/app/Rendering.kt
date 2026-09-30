@@ -153,6 +153,7 @@ class ObjectRenderer(private val vectorHighlights: Boolean = true) {
     private val highlightPaths = VisibleResourceCache<Pair<Item, Path>>()
     private val strokes = VisibleResourceCache<Pair<Item, Stroke>>()
     private val shapeLines = VisibleResourceCache<Pair<Item, FloatArray>>()
+    private val textLayouts = VisibleResourceCache<Pair<Item, android.text.StaticLayout>>()
     internal var strokeBuildCount = 0
         private set
 
@@ -176,6 +177,7 @@ class ObjectRenderer(private val vectorHighlights: Boolean = true) {
             strokes.retainVisible(ids)
             highlightPaths.retainVisible(ids)
             shapeLines.retainVisible(ids)
+            textLayouts.retainVisible(ids)
             foreground = items.filter { it.kind != "HIGHLIGHTER" && it.kind != "PDF" }
         }
         val highlights =
@@ -287,6 +289,20 @@ class ObjectRenderer(private val vectorHighlights: Boolean = true) {
             canvas.concat(local)
             val screen = Matrix().apply { setConcat(worldToScreen, local) }
             inkRenderer.draw(canvas, stroke, screen)
+        } else if (item.kind == "TEXT") {
+            val layout =
+                textLayouts[item.id]?.takeIf { it.first === item }?.second
+                    ?: textLayout(
+                            requireNotNull(item.text),
+                            item.fontSize,
+                            item.color,
+                            Bounds.of(item.points).width.toInt().coerceIn(1, 4096),
+                        )
+                        .also { textLayouts.put(item.id, item to it) }
+            canvas.concat(item.transform.matrix())
+            val anchor = item.points.first()
+            canvas.translate(anchor.x, anchor.y)
+            layout.draw(canvas)
         } else if (item.kind != "PDF") {
             paint.color = item.color
             paint.strokeWidth = item.width * max(item.transform.sx, item.transform.sy)

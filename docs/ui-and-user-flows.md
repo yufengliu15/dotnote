@@ -31,17 +31,19 @@ Library overflow actions:
 
 ## Shared new-note dialog
 
-The app and both widgets use `NewNoteDialog`. It remembers a title, selected vault and folder while the dialog survives configuration recreation. Initial destination is the current vault/current folder.
+The app and both widgets use `NewNoteDialog`. It remembers a title, selected vault, folder, template and template-creation flag while the dialog survives configuration recreation. Initial destination is the current vault/current folder.
 
-Changing vault loads its folders asynchronously through `state.vaultFolders(id)` without selecting that vault yet. The browser supports vault root, parent navigation and direct child folders. The full destination path disambiguates duplicate folder names. If a previously selected folder no longer exists, destination falls back to root.
+Changing vault loads its folders and template summaries asynchronously through `state.vaultFolders(id)` without selecting that vault yet. The browser supports vault root, parent navigation and direct child folders. The full destination path disambiguates duplicate folder names. If a previously selected folder no longer exists, destination falls back to root.
 
-Create is enabled only with a nonblank title, successfully loaded destination and no app busy state. It invokes `state.createNote(title, folderId, vaultId)` and dismisses the dialog. The action flushes existing work, switches vault if necessary, verifies the destination still exists, writes the new note and opens it. Failures report a message rather than silently creating in another folder. Cancel creates no note and does not select another vault, although browsing may initialize that vault's local index.
+Create is enabled only with a nonblank title, successfully loaded destination and no app busy state. It invokes `state.createNote(title, folderId, vaultId, templateId, isTemplate)` and dismisses the dialog. The action flushes existing work, switches vault if necessary, verifies the destination still exists, writes the new note and opens it. Failures report a message rather than silently creating in another folder. Cancel creates no note and does not select another vault, although browsing may initialize that vault's local index.
+
+The template picker defaults to Blank note and lists templates from every folder of the destination vault, including their folder paths. Create as template makes the new note reusable. Template notes stay visible/editable in the library with a Template label. Note options → Use as template marks an existing note; Remove from templates turns it back into an ordinary note. Creation rechecks the source template, preserves its scene/camera/dots and attachment references, and generates fresh note and item IDs. Editing the copy never changes the template. Attachments are immutable and shared within the vault. System quick notes always start blank and do not expose templates.
 
 ## Editor
 
 The 64 dp header contains Back, tappable title, toolbar when docked Top, saved indicator, Undo, Redo, and overflow. Top tools share this existing header; the strip scrolls when needed. Left/Right docking moves the tool strip beside the canvas. The title is truncated visually but its stored value is unchanged.
 
-Tool buttons select Pen, Highlighter, Eraser, Select, Pan, or the Shapes picker. Shapes offers line, arrow, rectangle, square, ellipse, circle and grid. Grid settings use 1–30 rows/columns. The canvas does not snap to the background dots.
+Tool buttons select Pen, Highlighter, Eraser, Select, Text, or the Shapes picker. Shapes offers line, arrow, rectangle, square, ellipse, circle and grid. Grid settings use 1–30 rows/columns. The canvas does not snap to the background dots.
 
 The bottom-right zoom indicator shows saved camera zoom and a “Fit all content” action. Selecting drawing items shows a bottom action bar with count, color picker, delete and clear selection. An empty note displays brief gesture guidance.
 
@@ -57,7 +59,13 @@ The bottom-right zoom indicator shows saved camera zoom and a “Fit all content
 
 The save label is local status. It does not indicate successful remote backup. Palette editing affects the current vault's settings and is not part of drawing undo.
 
-Editor overflow exposes Import PDF, image or PowerPoint, PDF page navigator, Export entire note as PDF, Export visible area as PDF, Writing settings, How to use Dotnote, and Dotnote version. Image imports can be tapped/lassoed with Select, dragged, resized and deleted with undo/redo; the color control is disabled for image-only selections. `.pptx` imports convert offline and show a dismissible report describing conversion limitations. PDF/slide pages stay locked and appear in the page navigator. Both library and editor version buttons open a dialog showing the installed build version and code. The navigator lists locked pages using page number and an asset prefix; tapping frames that page. PDF page operations and export semantics are described in [PDFs and export](pdf-and-export.md).
+Editor overflow exposes Use as template / Remove from templates, Import PDF, image or PowerPoint, PDF page navigator, Export entire note as PDF, Export visible area as PDF, Writing settings, How to use Dotnote, and Dotnote version. Image imports can be tapped/lassoed with Select, dragged, resized and deleted with undo/redo; the color control is disabled for image-only selections. `.pptx` imports convert offline and show a dismissible report describing conversion limitations. PDF/slide pages stay locked and appear in the page navigator. Both library and editor version buttons open a dialog showing the installed build version and code. The navigator lists locked pages using page number and an asset prefix; tapping frames that page. PDF page operations and export semantics are described in [PDFs and export](pdf-and-export.md).
+
+## Typed text
+
+Text replaces the former Pan button. A stylus or finger tap opens Add text, or Edit text when it hits an existing text object's rectangle. The dialog accepts up to 10,000 characters with multiple lines and a font-size slider (8–144 world units); Save text commits one history entry. Cancel leaves the scene intact; Delete text removes the object as one history entry. Empty/whitespace-only drafts cannot be saved. Drafts survive activity rotation in the current editor but are not stored as content before Save text.
+
+New text uses the selected palette color and the most recent text size for that vault (default 24). Existing text retains its color, anchor and transform when edited. Select moves/resizes/recolors/deletes text using the existing selection controls. Finger drag/fling with Text still pans even when finger drawing is enabled; pinches never open the text dialog. Stylus text drags and canceled gestures create nothing. Text also works in the isolated quick-note editor.
 
 ## Writing settings and color picker
 
@@ -90,7 +98,7 @@ Account Disconnect clears local credentials and cancels existing work for all va
 
 ## User-visible limits
 
-No drawing text tool, OCR/handwriting recognition, audio recording, PDF text search, collaborative editing, automatic device-to-device merge, or attachment gallery is implemented. The UI has no trash recovery or Git historical-version picker. Folder nesting has implementation limits rather than mathematically unlimited depth. Drawing is stylus-first; canvas accessibility is currently a description and click hook, not semantic navigation of every handwritten object.
+No OCR/handwriting recognition, audio recording, PDF text search, collaborative editing, automatic device-to-device merge, or attachment gallery is implemented. The UI has no trash recovery or Git historical-version picker. Folder nesting has implementation limits rather than mathematically unlimited depth. Drawing is stylus-first; canvas accessibility is currently a description and click hook, not semantic navigation of every handwritten object.
 
 Do not add network/account requirements to ordinary note creation or editing. Widgets and vault rename work independently of the Lenovo GitHub tablet verification.
 

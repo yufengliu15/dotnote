@@ -28,6 +28,7 @@ data class Note(
     val title: String,
     val modified: Long = System.currentTimeMillis(),
     val document: String = DocumentCodec.encode(Document()),
+    @ColumnInfo(defaultValue = "0") val isTemplate: Boolean = false,
 )
 
 data class NoteSummary(
@@ -35,14 +36,20 @@ data class NoteSummary(
     val folderId: String?,
     val title: String,
     val modified: Long,
+    val isTemplate: Boolean = false,
 )
 
 @Dao
 interface LibraryDao {
     @Query("SELECT * FROM folders ORDER BY name COLLATE NOCASE") fun folders(): Flow<List<Folder>>
 
-    @Query("SELECT id, folderId, title, modified FROM notes ORDER BY modified DESC")
+    @Query("SELECT id, folderId, title, modified, isTemplate FROM notes ORDER BY modified DESC")
     fun notes(): Flow<List<NoteSummary>>
+
+    @Query(
+        "SELECT id, folderId, title, modified, isTemplate FROM notes WHERE isTemplate = 1 ORDER BY title COLLATE NOCASE"
+    )
+    suspend fun templates(): List<NoteSummary>
 
     @Query("SELECT * FROM folders") suspend fun allFolders(): List<Folder>
 
@@ -77,9 +84,18 @@ interface LibraryDao {
     suspend fun save(id: String, document: String, modified: Long)
 }
 
-@Database(entities = [Folder::class, Note::class], version = 1, exportSchema = true)
+@Database(entities = [Folder::class, Note::class], version = 2, exportSchema = true)
 abstract class LibraryDatabase : RoomDatabase() {
     abstract fun dao(): LibraryDao
+
+    companion object {
+        val MIGRATION_1_2 =
+            object : androidx.room.migration.Migration(1, 2) {
+                override fun migrate(db: androidx.sqlite.db.SupportSQLiteDatabase) {
+                    db.execSQL("ALTER TABLE notes ADD COLUMN isTemplate INTEGER NOT NULL DEFAULT 0")
+                }
+            }
+    }
 }
 
 class Store(
@@ -101,6 +117,7 @@ class Store(
                 LibraryDatabase::class.java,
                 if (isAppVault) "vault-$vaultId.db" else databaseName,
             )
+            .addMigrations(LibraryDatabase.MIGRATION_1_2)
             .build()
     private val index = db.dao()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -113,6 +130,7 @@ class Store(
                     // Leave the old DB and PDFs intact. Replay safely if migration was interrupted.
                     val legacy =
                         Room.databaseBuilder(context, LibraryDatabase::class.java, "dotnote.db")
+                            .addMigrations(LibraryDatabase.MIGRATION_1_2)
                             .build()
                     try {
                         val old =
@@ -229,6 +247,7 @@ class Store(
                                     .put("title", it.title)
                                     .put("modified", it.modified)
                                     .put("document", JSONObject(it.document))
+                                    .put("template", it.isTemplate)
                             }
                         ),
                     )
@@ -349,6 +368,7 @@ class Store(
                             title = o.getString("title"),
                             modified = o.getLong("modified"),
                             document = DocumentCodec.encode(doc.copy(items = items)),
+                            isTemplate = o.optBoolean("template", false),
                         )
                     }
                 val restoredFolders =

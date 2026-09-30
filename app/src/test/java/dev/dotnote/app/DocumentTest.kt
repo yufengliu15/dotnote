@@ -5,6 +5,54 @@ import org.junit.Test
 
 class DocumentTest {
     @Test
+    fun textRoundTripSelectionAndTransformsPreserveUnicodeAndSize() {
+        val text =
+            Item(
+                kind = "TEXT",
+                text = "Hello\n你好 café",
+                fontSize = 32f,
+                points = listOf(Pt(10f, 20f), Pt(210f, 100f)),
+                transform = Transform(2f, 3f, 40f, 50f),
+            )
+        val restored =
+            DocumentCodec.decode(DocumentCodec.encode(Document(listOf(text)))).items.single()
+        assertEquals(text, restored)
+        assertEquals(Bounds(60f, 110f, 460f, 350f), restored.bounds)
+        assertTrue(hitItem(restored, Pt(200f, 200f), 0f))
+        assertFalse(hitItem(restored, Pt(500f, 200f), 0f))
+        assertTrue(
+            lassoHits(
+                restored,
+                listOf(Pt(100f, 140f), Pt(150f, 140f), Pt(150f, 180f), Pt(100f, 180f)),
+            )
+        )
+        val old = org.json.JSONObject(DocumentCodec.encode(Document(listOf(text))))
+        old.getJSONArray("items").getJSONObject(0).remove("fontSize")
+        assertEquals(24f, DocumentCodec.decode(old.toString()).items.single().fontSize, 0f)
+    }
+
+    @Test
+    fun invalidTextIsRejectedWithoutChangingLegacyDefaults() {
+        val valid = Item(kind = "TEXT", text = "Content", points = listOf(Pt(0f, 0f), Pt(50f, 30f)))
+        listOf(
+                valid.copy(text = " "),
+                valid.copy(text = "x".repeat(10001)),
+                valid.copy(fontSize = 0f),
+                valid.copy(points = emptyList()),
+            )
+            .forEach {
+                try {
+                    DocumentCodec.decode(DocumentCodec.encode(Document(listOf(it))))
+                    fail("Invalid text accepted")
+                } catch (_: IllegalArgumentException) {}
+            }
+        val legacy = Item(kind = "LINE", points = listOf(Pt(0f, 0f), Pt(40f, 40f)))
+        assertNull(
+            DocumentCodec.decode(DocumentCodec.encode(Document(listOf(legacy)))).items.single().text
+        )
+    }
+
+    @Test
     fun imagesAreSelectableInsideTheirTransformedBoundsAndPersistWithoutUnlockingPdfs() {
         val image =
             Item(

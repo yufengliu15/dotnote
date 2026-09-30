@@ -72,6 +72,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
     private var flingX = 0
     private var flingY = 0
     private var suppressFingers = false
+    private var textDragged = false
     private val predictor = MotionEventPredictor.newInstance(this)
     private val content =
         object : View(context) {
@@ -264,7 +265,12 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
                     postInvalidateOnAnimation()
                 }
             }
+            val textTap =
+                !panDragged &&
+                    state.tool == Tool.TEXT &&
+                    hypot(e.x - panStart.x, e.y - panStart.y) <= scrollConfig.scaledTouchSlop
             clearVelocity()
+            if (textTap) state.requestText(world(e, 0))
         }
     }
 
@@ -521,7 +527,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
             return true
         }
         if (action == MotionEvent.ACTION_DOWN) {
-            if (state.fingerDrawing && state.tool != Tool.HAND) begin(event, index)
+            if (state.fingerDrawing && state.tool != Tool.TEXT) begin(event, index)
             else {
                 navigation = true
                 navigate(event)
@@ -535,6 +541,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
         pointer = e.getPointerId(index)
         start = world(e, index)
         last = start
+        textDragged = false
         activeTool =
             if (
                 e.getToolType(index) == MotionEvent.TOOL_TYPE_ERASER ||
@@ -542,13 +549,6 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
             )
                 Tool.ERASER
             else state.tool
-        if (activeTool == Tool.HAND) {
-            pointer = -1
-            suppressFingers = false
-            navigation = true
-            navigate(e)
-            return
-        }
         gestureBefore = state.document.items
         when (activeTool) {
             Tool.PEN,
@@ -569,6 +569,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
                 recordInputs(e, index)
                 if (!high) activeStroke = ink.startStroke(e, pointer, recordedBrush!!, inverse)
             }
+            Tool.TEXT -> state.selection = emptySet()
             Tool.ERASER -> erase(start, start)
             Tool.LASSO -> {
                 originalBounds = selectionBounds()
@@ -616,6 +617,17 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
         }
         if (e.actionMasked != MotionEvent.ACTION_MOVE && !released) return
         val p = world(e, i)
+        if (activeTool == Tool.TEXT) {
+            if (hypot(p.x - start.x, p.y - start.y) > 8f / state.document.camera.zoom)
+                textDragged = true
+            if (released) {
+                pointer = -1
+                gestureBefore = null
+                if (!textDragged) state.requestText(start)
+                textDragged = false
+            }
+            return
+        }
         if (highlightPreview != null) {
             recordInputs(e, i)
             if (released) {

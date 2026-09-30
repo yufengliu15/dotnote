@@ -135,6 +135,8 @@ class VaultFiles(val root: File) {
             require(
                 settings.getDouble("width").isFinite() && settings.getDouble("width") in 1.0..12.0
             )
+            val textSize = settings.optDouble("textSize", 24.0)
+            require(textSize.isFinite() && textSize in 8.0..144.0) { "Invalid text size setting" }
             settings.getInt("color")
             settings.getInt("rows")
             settings.getInt("cols")
@@ -220,7 +222,14 @@ class VaultFiles(val root: File) {
                         }
                         notePaths[id] = file.relativeTo(root).invariantSeparatorsPath
                         notes.add(
-                            Note(id, parent, o.getString("title"), o.getLong("modified"), doc)
+                            Note(
+                                id,
+                                parent,
+                                o.getString("title"),
+                                o.getLong("modified"),
+                                doc,
+                                o.optBoolean("template", false),
+                            )
                         )
                     } else
                         require(
@@ -264,6 +273,7 @@ class VaultFiles(val root: File) {
             .put("title", note.title)
             .put("modified", note.modified)
             .put("document", JSONObject(note.document))
+            .put("template", note.isTemplate)
             .toString()
 
     fun writeNote(note: Note) {

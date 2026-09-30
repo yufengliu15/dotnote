@@ -10,6 +10,11 @@ class FileLibraryDao(private val store: Store, private val index: LibraryDao) : 
 
     override fun notes() = index.notes()
 
+    override suspend fun templates(): List<NoteSummary> {
+        store.ready.await()
+        return index.templates()
+    }
+
     override suspend fun allFolders(): List<Folder> {
         store.ready.await()
         return index.allFolders()

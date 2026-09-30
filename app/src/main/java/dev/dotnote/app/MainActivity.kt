@@ -420,8 +420,9 @@ private fun Library(state: AppState) {
                                     overflow = TextOverflow.Ellipsis,
                                 )
                                 Text(
-                                    SimpleDateFormat("MMM d · h:mm a", Locale.getDefault())
-                                        .format(Date(note.modified)),
+                                    (if (note.isTemplate) "Template · " else "") +
+                                        SimpleDateFormat("MMM d · h:mm a", Locale.getDefault())
+                                            .format(Date(note.modified)),
                                     fontSize = 11.sp,
                                     color = Color(0xff737a70),
                                 )
@@ -668,11 +669,10 @@ internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() ->
             onDismissRequest = { state.importReport = null },
             title = { Text("PowerPoint converted to PDF") },
             text = { Text(report, Modifier.verticalScroll(rememberScrollState())) },
-            confirmButton = {
-                TextButton(onClick = { state.importReport = null }) { Text("Done") }
-            },
+            confirmButton = { TextButton(onClick = { state.importReport = null }) { Text("Done") } },
         )
     }
+    state.textEdit?.let { TextEditorDialog(state, it) }
     var canvas by remember { mutableStateOf<NotebookView?>(null) }
     var settings by remember { mutableStateOf(false) }
     var shapes by remember { mutableStateOf(false) }
@@ -740,7 +740,7 @@ internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() ->
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    "INFINITE CANVAS",
+                    if (state.note?.isTemplate == true) "TEMPLATE" else "INFINITE CANVAS",
                     fontSize = 9.sp,
                     letterSpacing = 1.5.sp,
                     color = Color(0xff75806f),
@@ -795,6 +795,20 @@ internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() ->
                         Icon(Icons.Outlined.MoreVert, "Note options")
                     }
                     DropdownMenu(overflow, { overflow = false }) {
+                        DropdownMenuItem(
+                            text = {
+                                Text(
+                                    if (state.note?.isTemplate == true) "Remove from templates"
+                                    else "Use as template"
+                                )
+                            },
+                            leadingIcon = { Icon(Icons.Outlined.ContentCopy, null) },
+                            onClick = {
+                                overflow = false
+                                canvas?.settle()
+                                state.setTemplate(state.note?.isTemplate != true)
+                            },
+                        )
                         DropdownMenuItem(
                             text = { Text("Import PDF, image or PowerPoint") },
                             leadingIcon = { Icon(Icons.Outlined.PictureAsPdf, null) },
@@ -924,13 +938,14 @@ internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() ->
                                 fontSize = 12.sp,
                             )
                             IconButton(
-                                enabled = state.document.items.any {
-                                    it.id in state.selection && !it.locked && !it.image
-                                },
+                                enabled =
+                                    state.document.items.any {
+                                        it.id in state.selection && !it.locked && !it.image
+                                    },
                                 onClick = {
                                     canvas?.settle()
                                     selectionColor = true
-                                }
+                                },
                             ) {
                                 Icon(Icons.Outlined.Palette, "Change selection color")
                             }
@@ -1056,7 +1071,7 @@ internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() ->
             title = { Text("Make yourself at home") },
             text = {
                 Text(
-                    "Write with your stylus; drag or flick with one finger to pan, and pinch to zoom. Faster flicks coast farther; touch the canvas to stop. Enable finger drawing in settings if needed, then use Hand for flick scrolling.\n\nSelect a shape and drag to draw it. The grid's rows and columns are adjustable.\n\nUse Select to circle objects or tap one. Drag the selection to move it; drag its bottom-right handle to resize.\n\nPDF pages stay locked underneath your writing. Use the page navigator to jump through a document.\n\nNotes save automatically. Back up your library from the home screen menu. Uninstalling removes local notes."
+                    "Write with your stylus; drag or flick with one finger to pan, and pinch to zoom. Faster flicks coast farther; touch the canvas to stop. Enable finger drawing in settings if needed, use two fingers to pan while finger drawing is enabled.\n\nChoose Text and tap the canvas to type. Tap existing text with Text to edit it. Use Select to move, resize, recolor or delete text.\n\nIn Note options, choose Use as template. New note can start from any template in the selected vault; each copy is independent.\n\nSelect a shape and drag to draw it. The grid's rows and columns are adjustable.\n\nUse Select to circle objects or tap one. Drag the selection to move it; drag its bottom-right handle to resize.\n\nPDF pages stay locked underneath your writing. Use the page navigator to jump through a document.\n\nNotes save automatically. Back up your library from the home screen menu. Uninstalling removes local notes."
                 )
             },
             confirmButton = { TextButton(onClick = { help = false }) { Text("Got it") } },
@@ -1069,7 +1084,7 @@ private fun toolIcon(tool: Tool): ImageVector =
         Tool.HIGHLIGHTER -> Icons.Outlined.BorderColor
         Tool.ERASER -> Icons.Outlined.AutoFixNormal
         Tool.LASSO -> Icons.Outlined.Gesture
-        Tool.HAND -> Icons.Outlined.PanTool
+        Tool.TEXT -> Icons.Outlined.TextFields
         Tool.LINE -> Icons.Outlined.HorizontalRule
         Tool.ARROW -> Icons.AutoMirrored.Outlined.ArrowForward
         Tool.RECTANGLE -> Icons.Outlined.CropLandscape
@@ -1089,7 +1104,7 @@ private fun ToolStrip(
     onEditColor: (Int) -> Unit,
 ) {
     val shapeTool = state.tool.ordinal >= Tool.LINE.ordinal
-    val tools = listOf(Tool.PEN, Tool.HIGHLIGHTER, Tool.ERASER, Tool.LASSO, Tool.HAND)
+    val tools = listOf(Tool.PEN, Tool.HIGHLIGHTER, Tool.ERASER, Tool.LASSO, Tool.TEXT)
     val content: @Composable () -> Unit = {
         tools.forEach { tool ->
             ToolButton(tool.label, toolIcon(tool), state.tool == tool) {

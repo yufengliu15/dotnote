@@ -307,7 +307,8 @@ class FlingNavigationTest {
         assertStopped(state)
         assertEquals("LINE", state.document.items.single().kind)
         instrumentation.runOnMainSync {
-            state.tool = Tool.HAND
+            state.fingerDrawing = false
+            state.tool = Tool.TEXT
             swipe(view)
         }
         val released = camera(state)

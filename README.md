@@ -2,11 +2,19 @@
 
 An offline, native Kotlin notebook for Android tablets. Built with Jetpack Compose, AndroidX Ink 1.0, Room, and Android's PDF renderer. Works offline without an account. Optional GitHub backups; no subscriptions or analytics.
 
+## 0.9.0 text and templates
+
+Choose **Text** in the toolbar, then tap the canvas to add typed text. Tap existing text with Text to edit it; choose a font size in the dialog. Select supports moving, resizing, recoloring and deleting text, with undo/redo. Text is saved with the note and appears in PDF exports. Finger dragging still pans; pinching zooms.
+
+To reuse a layout, open **Note options → Use as template**, or enable **Create as template** in New note. The New note dialog offers **Blank note** and templates from the selected vault. Copies retain the layout, dot grid, camera and attachments, with independent content and new IDs. Templates remain editable notes in the library and travel with vault/ZIP backups.
+
+Current app version: **0.9.0 / code 14**. See [CHANGELOG.md](CHANGELOG.md) and [VALIDATION.md](VALIDATION.md). Existing notes and the local index migrate without clearing app data. Notes containing the new text objects require 0.9.0 or later; older app versions do not recognize them.
+
 ## 0.8.1 import fixes
 
 Image-heavy PowerPoint decks now convert one slide at a time, avoiding the previous cumulative image limit. Imported images work with **Select**: tap or lasso an image, drag to move it, resize with its corner handle, or use the selection trash button. Undo/redo and reopening preserve these edits. Images imported before 0.8.1 need to be reimported because the old build did not record their image origin.
 
-Current app version: **0.8.1 / code 13**. The previous import feature is the **0.8.0** baseline. See [CHANGELOG.md](CHANGELOG.md) and the [versioning and release workflow](docs/build-test-release.md#versioning-and-source-control). Future releases advance the version; historical release numbers remain unchanged.
+The import-fix release was **0.8.1 / code 13**. The previous import feature is the **0.8.0** baseline. See [CHANGELOG.md](CHANGELOG.md) and the [versioning and release workflow](docs/build-test-release.md#versioning-and-source-control). Future releases advance the version; historical release numbers remain unchanged.
 
 ## 0.7.1 calendar widget
 
@@ -30,7 +38,7 @@ Sign-in waits for your return from the GitHub browser page and retries temporary
 
 ## 0.5.0 momentum scrolling
 
-Flick with one finger to coast through PDFs and across the canvas. Faster flicks travel farther and slow down naturally. Touch the canvas again to stop immediately. Pinch zoom and drawing stay precise; with finger drawing enabled, select the Hand tool to flick.
+Flick with one finger to coast through PDFs and across the canvas. Faster flicks travel farther and slow down naturally. Touch the canvas again to stop immediately. Pinch zoom and drawing stay precise. The 0.5.0 release included a Hand tool for finger scrolling; in 0.9.0, choose Text for one-finger pan or use two fingers while drawing.
 
 ## Previous drawing update
 
@@ -44,7 +52,7 @@ Start with [docs/README.md](docs/README.md) for the implementation guide: archit
 
 ## Install
 
-Install `dist/dotnote-0.8.1.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
+Install `dist/dotnote-0.9.0.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
 
 Install this APK over the previous Dotnote build to keep your library.
 

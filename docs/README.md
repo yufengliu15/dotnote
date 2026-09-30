@@ -2,15 +2,15 @@
 
 Start here when joining the project or changing the app. These documents describe the implementation, not a proposed design.
 
-**Current release:** app 0.8.1, version code 13. `app/build.gradle.kts` is authoritative for current app metadata; [CHANGELOG.md](../CHANGELOG.md) records changes and [VALIDATION.md](../VALIDATION.md) records what was tested. Historical entries keep their original versions. Follow [versioning and source control](build-test-release.md#versioning-and-source-control) when shipping any change.
+**Current release:** app 0.9.0, version code 14. `app/build.gradle.kts` is authoritative for current app metadata; [CHANGELOG.md](../CHANGELOG.md) records changes and [VALIDATION.md](../VALIDATION.md) records what was tested. Historical entries keep their original versions. Follow [versioning and source control](build-test-release.md#versioning-and-source-control) when shipping any change.
 
 ## What the app is
 
-Dotnote is an offline Kotlin Android tablet notebook: an unbounded dot-grid scene, pressure pen, highlighter, shapes, selection editing, imported PDF pages, nested folders, and multiple vaults. Jetpack Compose provides the interface; a custom Android View and AndroidX Ink handle drawing. It does not use Excalidraw or a web view.
+Dotnote is an offline Kotlin Android tablet notebook: an unbounded dot-grid scene, pressure pen, highlighter, shapes, typed text, reusable templates, selection editing, imported PDF pages, nested folders, and multiple vaults. Jetpack Compose provides the interface; a custom Android View and AndroidX Ink handle drawing. It does not use Excalidraw or a web view.
 
 Notes are portable `.dotnote` JSON files. A vault is a directory containing notes, folder metadata, writing settings, and original PDFs. Room indexes that directory for the app. Optional GitHub backups upload snapshots and explicitly restore another local vault. They do not synchronize two devices continuously.
 
-There is no server, subscription, analytics, handwriting recognition, typed-text tool, or collaboration layer. Local editing requires neither internet nor an account.
+There is no server, subscription, analytics, handwriting recognition, or collaboration layer. Local editing requires neither internet nor an account.
 
 ## Read in this order
 

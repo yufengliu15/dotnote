@@ -14,9 +14,10 @@ Pen and marker brush families are lazily cached stock AndroidX families (`pressu
 | --- | --- |
 | Stylus/eraser down with no owned pointer | Owns the gesture and suppresses palm/finger effects until the gesture ends |
 | Eraser tool type or primary stylus button at begin | Overrides selected tool with whole-stroke eraser |
-| Stylus with Hand selected | Enters navigation instead of drawing |
+| Stylus with Text selected | Tap adds/edits text at the world coordinate; drag or cancel creates nothing |
 | One finger, default settings | Pans, then coasts after a flick |
-| One finger with finger drawing enabled and non-Hand tool | Begins that drawing/editing tool |
+| One finger with finger drawing enabled and non-Text tool | Begins that drawing/editing tool |
+| One finger with Text selected | Tap adds/edits text; drag/fling pans, including with finger drawing enabled |
 | Two or more fingers without stylus ownership | Cancels an owned finger drawing gesture and enters pan/pinch navigation |
 | Extra finger while stylus owns gesture | Does not draw or move camera |
 | `ACTION_CANCEL` or canceled owned pointer-up | Cancels live ink and restores pre-gesture item list |
@@ -77,6 +78,12 @@ A short gesture (`< 8 / zoom` displacement and fewer than five lasso samples) is
 Movement applies delta to the captured original transforms. Resize uses the selection's top-left anchor, independent x/y factors clamped to `0.05..20` for that gesture. Aspect ratio is not preserved during selection resize, even for a previously constrained square/circle. There is no rotation handle. Preview always derives from the original list to avoid cumulative drift. Release commits one history entry.
 
 Selection actions recolor unlocked items, delete selected items, or clear selection. The color action opens the same picker used by palette slots. Recolor is undoable; choosing a palette color alone changes future ink, not selected objects.
+
+## Typed text
+
+Text items store their content, font size and two local rectangle corners. `TextTool.kt` uses Android StaticLayout to measure and render multiline Unicode text with a maximum line width of 4,096 world units. The shared ObjectRenderer caches layouts for the visible working set plus bounded offscreen entries and applies the same object transform for the canvas and PDF export. Text sits above the highlighter layer with pen/shapes. Font metrics depend on device fonts; a PDF captures the exporting device's rendering.
+
+Text hit tests use the full transformed rectangle; lasso uses the same rectangular overlap behavior as imported images. Existing selection transforms, recoloring, deletion and whole-object eraser behavior apply, with one history entry per change. The dialog draft does not preview-mutably replace the scene. Saving/deleting text commits through AppState, and reopening uses the stored dimensions for culling/selection.
 
 ## Camera, grid and draw order
 

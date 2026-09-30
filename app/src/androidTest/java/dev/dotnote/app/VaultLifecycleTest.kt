@@ -83,7 +83,9 @@ class VaultLifecycleTest {
         val oldTarget = prefs.getString("legacyTarget", null)
         val vault = catalog.create("Migration test")
         val legacy =
-            Room.databaseBuilder(context, LibraryDatabase::class.java, "dotnote.db").build()
+            Room.databaseBuilder(context, LibraryDatabase::class.java, "dotnote.db")
+                .addMigrations(LibraryDatabase.MIGRATION_1_2)
+                .build()
         val folder = Folder(name = "Legacy lectures")
         val pdf = File(context.filesDir, "pdfs/${newId()}.pdf").apply { parentFile!!.mkdirs() }
         val doc = PdfDocument()

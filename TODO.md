@@ -5,7 +5,7 @@
 - [ ] Performance overhaul for the 1.0.0 release.
 - [ ] Investigate the initial bootup "Working" screen: determine whether sync causes it and make the status text more explicit.
 - [ ] README overhaul for the 1.0.0 release.
-- [ ] Replace pan tool with text tool
-- [ ] Ability to create template notes
+- [x] Replace pan tool with text tool
+- [x] Ability to create template notes
 
 

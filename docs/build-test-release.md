@@ -52,13 +52,13 @@ Use `adb devices` to confirm the intended target; pass `-s <serial>` when more t
 
 The current distributable is a debug-signed personal-test build. There is no checked-in production signing setup, Play Store pipeline or CI release workflow. `assembleRelease` alone is not a configured production distribution process.
 
-## Test inventory: 35 JVM tests
+## Test inventory: 37 JVM tests
 
 Tests are in [`app/src/test/java/dev/dotnote/app/`](../app/src/test/java/dev/dotnote/app/).
 
 | Class | Count | Contracts |
 | --- | --- | --- |
-| `DocumentTest` | 11 | Camera zoom anchor; valid/invalid/corrupt folder cycles; codec round trip with attachments/transforms; gesture history and redo invalidation; geometric hit tests including locked PDFs and selectable images; concave polygon selection; transform composition; attachment traversal rejection; unsupported version rejection |
+| `DocumentTest` | 13 | Unicode text/size codec roundtrip, rectangular selection/transforms and malformed text rejection; camera zoom anchor; valid/invalid/corrupt folder cycles; codec round trip with attachments/transforms; gesture history and redo invalidation; geometric hit tests including locked PDFs and selectable images; concave polygon selection; transform composition; attachment traversal rejection; unsupported version rejection |
 | `DocumentImportTest` | 2 | File/MIME classification and bounded input copying |
 | `GitHubSignInTest` | 10 | Browser-return gate, same-code DNS retry, approved-token retention, slowdown/timeout backoff, code expiry, denial, cancellation, initial-code retries, TLS/auth classification |
 | `VaultRulesTest` | 2 | Edit-based backup deadlines and clamping; local/remote path and repository-name restrictions |
@@ -68,12 +68,13 @@ Tests are in [`app/src/test/java/dev/dotnote/app/`](../app/src/test/java/dev/dot
 
 These are ordinary JUnit tests with a JVM `org.json` dependency. Native Android Ink rendering, actual Room/WorkManager, Views and PDF APIs require instrumentation; a passing JVM suite cannot establish those behaviors.
 
-## Test inventory: 40 Android tests
+## Test inventory: 45 Android tests
 
 Tests are in [`app/src/androidTest/java/dev/dotnote/app/`](../app/src/androidTest/java/dev/dotnote/app/).
 
 | Class | Count | Test methods and coverage |
 | --- | --- | --- |
+| `TextTemplateTest` | 5 | Text dialog/taps, rotation, edit/history, selection/move/resize/recolor/delete/reopen; screen/PDF text pixels; independent templates with attachment/backup/rebuild; template creation/picker UI; non-destructive Room 1→2 migration |
 | `NativePipelineTest` | 2 | `nativeInkSurvivesSerializationAndRenders`; `pdfImportExportBackupRestoreAndFailedRestoreAreConsistent` |
 | `FlingNavigationTest` | 3 | 40-page PDF fling, speed/direction/zoom, decay and saved camera; touch/stylus/page/fit/release interruption; slow/cancelled/pinch/drawing exclusion |
 | `GesturePipelineTest` | 2 | Synthetic stylus at 200% zoom, pen/highlighter, save/reopen and history; imported-image tap/move/resize/delete/undo/redo/reopen and eraser protection |
