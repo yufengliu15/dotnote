@@ -1,0 +1,27 @@
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/calendar_widget"
+    android:layout_width="match_parent" android:layout_height="match_parent"
+    android:orientation="horizontal" android:layoutDirection="ltr"
+    android:paddingHorizontal="8dp" android:paddingVertical="4dp"
+    android:background="@drawable/widget_calendar_background"
+    android:contentDescription="@string/widget_calendar_open">
+    <LinearLayout android:layout_width="0dp" android:layout_weight="1"
+        android:layout_height="match_parent" android:orientation="vertical">
+        <TextView android:id="@+id/calendar_current_title" style="@style/CalendarMonthTitleCompact" />
+        <LinearLayout android:id="@+id/calendar_current_weekdays"
+            android:layout_width="match_parent" android:layout_height="18dp" android:orientation="horizontal" />
+        <LinearLayout android:id="@+id/calendar_current_grid"
+            android:layout_width="match_parent" android:layout_height="0dp"
+            android:layout_weight="1" android:orientation="vertical" />
+    </LinearLayout>
+    <TextView android:layout_width="16dp" android:layout_height="match_parent" />
+    <LinearLayout android:layout_width="0dp" android:layout_weight="1"
+        android:layout_height="match_parent" android:orientation="vertical">
+        <TextView android:id="@+id/calendar_next_title" style="@style/CalendarMonthTitleCompact" />
+        <LinearLayout android:id="@+id/calendar_next_weekdays"
+            android:layout_width="match_parent" android:layout_height="18dp" android:orientation="horizontal" />
+        <LinearLayout android:id="@+id/calendar_next_grid"
+            android:layout_width="match_parent" android:layout_height="0dp"
+            android:layout_weight="1" android:orientation="vertical" />
+    </LinearLayout>
+</LinearLayout>

@@ -82,7 +82,7 @@ This is a valid minimal note containing a line shape; no native Ink binary paylo
 }
 ```
 
-`modified` is milliseconds since Unix epoch. The outer note version, inner document version, vault version and writing-settings version are separately checked and all currently equal 1. They are unrelated to app version 0.4.0 or Room schema version 1.
+`modified` is milliseconds since Unix epoch. The outer note version, inner document version, vault version and writing-settings version are separately checked and all currently equal 1. They are independent of the application's release version and Room's schema version.
 
 ### Document and item fields
 
@@ -102,12 +102,15 @@ This is a valid minimal note containing a line shape; no native Ink binary paylo
 | `rows`, `cols` | Grid subdivisions; serialized on every item, ignored by other shapes |
 | `asset` | Optional PDF filename relative to vault `attachments/`; never an absolute path/URI |
 | `page` | Zero-based PDF page index; serialized as 0 on ordinary ink/shapes |
+| `image` | Optional boolean (default false), emitted only for imported images; requires PDF kind and an attachment. Enables image selection without unlocking normal PDF pages. |
 
 The encoder emits all scalar/list fields and omits `ink` and `asset` when absent. **Omit absent optional strings instead of writing JSON `null`**: decoding checks key presence then reads a string. Do not rely on explicit-null coercion.
 
 For pen strokes, the points support bounds/hit tests while `ink` reconstructs pressure-sensitive rendering. `strokeItem` stores opaque color even for highlights; marker transparency is applied by the renderer. An edited color rebuilds the native brush rather than rewriting input bytes. Transforms leave both the input batch and original points intact.
 
-PDF items use `kind: "PDF"`, an `asset`, a `page`, and two bounding corners. They are locked (`Item.locked`) and excluded from normal selection/eraser hit tests. Original PDF bytes are shared by all pages that reference the same asset.
+PDF items use `kind: "PDF"`, an `asset`, a `page`, and two bounding corners. Ordinary PDFs and PowerPoint slides are locked (`Item.locked`). Imported images additionally store `image: true`; Select hits their rectangular interior and can move, resize and delete them. All PDF-backed items stay on the attachment layer underneath ink. Eraser and recoloring exclude images, so erasing annotations cannot delete an image. Original PDF bytes are shared by all pages that reference the same asset.
+
+This is an additive version-1 field with default false. Older files remain readable, and older builds display images as locked PDF pages (and may drop the new flag when saving). The 0.8.0 converter did not retain image provenance, so old images cannot safely be distinguished from genuine single-page PDFs. Reimport them to enable selection; do not guess from page count or dimensions.
 
 ## Coordinate system and geometry
 

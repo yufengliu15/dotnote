@@ -9,4 +9,8 @@
   <string name="widget_plus">+</string>
   <string name="widget_new_label">New note</string>
   <string name="widget_app_name">Dotnote</string>
+  <string name="widget_calendar_name">Dotnote · Calendar</string>
+  <string name="widget_calendar_description">This month and next month, with today highlighted. Tap to open Dotnote.</string>
+  <string name="widget_calendar_open">Open Dotnote</string>
+  <string name="widget_calendar_today">Today, %1$s</string>
 </resources>

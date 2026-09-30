@@ -1,3 +1,56 @@
+# 0.8.1 import and image-selection fixes
+
+Validated September 30, 2026 with JDK 20 (bytecode target 17), Android SDK 36 and the disposable Android 16 / API 36 ARM64 emulator. Current application metadata is **0.8.1 / code 13**. The import feature baseline is 0.8.0; the initial metadata mistake is preserved in the historical record below and explained in CHANGELOG.md.
+
+- Debug app and instrumentation APK builds passed; all **35 JVM tests** passed; lint passed with **0 errors, 39 warnings**.
+- **17 focused Android tests passed**, in separate invocations where appropriate: DocumentImportPipelineTest (5), NativePipelineTest (2), GesturePipelineTest (2), EditorUpdateTest (3), HighlighterPerformanceTest (2), VectorPerformanceTest (2), InkStartupTest (1).
+- The image-heavy regression imports 24 slides containing 2048×1152 imagery (56.6 million decoded pixels in total), exceeding the old 32 Mi-pixel limit. It verifies every page and first/last-page colors. Slides now rasterize and stream to PDF one at a time; shared package parts count once toward expanded-content limits.
+- Image tests verify tap selection, drag/move, corner resize, deletion, undo/redo, saved transforms after reopening, eraser protection, backup persistence, and moved/resized placement in exported PDF. Ordinary PDFs and converted PowerPoint slides remain locked. Older images need reimport because the old build stored no origin flag.
+- APK metadata/signing and versioned packaging are checked by `scripts/package-release.py`. Delivery: `dist/dotnote-0.8.1.apk`, `dist/dotnote-0.8.1-source.zip`, `dist/SHA256SUMS-0.8.1` and `dist/release-0.8.1.json`; current aliases are copied from the same outputs.
+
+Source control: branch `codex/import-fixes-0.8.1`. This workspace already contained uncommitted calendar/widget and import work; those changes are preserved. The packaged APK is an explicitly recorded **development snapshot**, not a clean tagged release. Its manifest records the base commit, dirty paths, certificate and artifact/source hashes. No tag or push is claimed.
+
+Evidence: `/private/tmp/dotnote-0.8.1-final-build.log`, `/private/tmp/dotnote-0.8.1-import-tests.log`, `/private/tmp/dotnote-0.8.1-final-import-tests.log`, `/private/tmp/dotnote-0.8.1-gesture-tests.log` and the four class-named drawing-test logs. Physical-tablet behavior and the user's actual deck remain unverified; the reported failure is covered by a generated deck that exceeds the former limit. Converted slides are lossless raster pages capped at 2048 pixels on their longest edge; device fonts and the existing limited PowerPoint feature coverage still apply.
+
+---
+
+# Image and offline PowerPoint import validation (0.8.0 feature baseline)
+
+Validated September 30, 2026 using the cached JDK 20 / Android SDK 36 toolchain and the disposable Android 16 / API 36 ARM64 emulator. This is a development build retaining the current 0.7.1 / code 11 version; existing release artifacts were not replaced.
+
+- `:app:assembleDebug`, `:app:assembleDebugAndroidTest`, and all 34 JVM tests passed.
+- `:app:lintDebug` passed with 0 errors and 38 warnings.
+- `DocumentImportPipelineTest` passed all 4 tests: image pixels/aspect ratio and backup, JPEG EXIF rotation and bounded decoding, PPTX presentation order/slide dimensions/layout-inherited text/embedded images/basic shapes, and unsupported-content reports/XML document-type rejection/corrupt-image cleanup.
+- Both existing `NativePipelineTest` tests passed, covering native ink and PDF import/export/backup/restore. Combined focused Android run: **6 tests, 0 failures**.
+
+Build output: `app/build/outputs/apk/debug/app-debug.apk`. Build log: `/private/tmp/dotnote-import-build.log`; Android results: `/private/tmp/dotnote-import-final-tests.log`. Source paths: `DocumentImport.kt`, `PptxPdf.kt`, the editor import flow, and new JVM/Android import tests. Conversion uses generated PresentationML fixtures; arbitrary real-world decks, third-party document providers, and physical-tablet behavior still need acceptance checks. Offline rendering intentionally supports a subset of PowerPoint; legacy `.ppt`, charts, tables, SmartArt and exact font/effect reproduction are outside that subset. See [PDFs and export](docs/pdf-and-export.md).
+
+---
+
+# 0.7.1 compact calendar update
+
+Built September 29, 2026 using the cached JDK 20 / Android SDK 36 toolchain. Calendar defaults to 4×2 launcher cells, with minimum and minimum resize dimensions reduced to 250×110 dp. Shorter than 180 dp, the widget uses compact headers, padding and date text sized for the available week rows. Responsive variants now use both width and height, including legacy orientation alternatives.
+
+Manually resized the existing calendar on the Android 16 / API 36 tablet emulator from 4×3 (672×344 dp) to 4×2 (672×224 dp); the current and next month remain complete. Screenshot: `dist/preview/calendar-widget-4x2.png`. Debug APK built successfully, version 0.7.1 / code 11. No tests or lint rerun, as requested. Smaller phone-launcher dimensions and physical OEM behavior remain unverified.
+
+---
+
+# 0.7.0 calendar widget validation
+
+Validated September 29, 2026 using JDK 20 (bytecode target 17), Android SDK 36, and the existing disposable Android 16 / API 36 ARM64 tablet emulator.
+
+- Build, all **32 JVM tests**, lint, and Android test APK assembly pass. Lint has no errors; existing project warnings remain.
+- **6 Android widget tests pass**: two calendar tests plus the four existing widget regressions. The calendar tests exercise real RemoteViews at 280×200, 360×220 and 500×260 dp, whole six-week months, today's highlight, December/January rollover, launcher-preview inflation and the root PendingIntent opening Dotnote without requesting note creation.
+- Date rules cover leap years, Monday alignment, all month dates, and Toronto's 23/25-hour daylight-saving days.
+- Rendered widget inspected visually against the supplied reference: rounded translucent panel, two side-by-side months, Monday-first weekday headers, blue Saturdays, pink Sundays and a dark rounded today highlight. The Android launcher lists all three Dotnote widgets. Added Calendar on the actual home screen, confirmed live September/October dates, tapped it to open MainActivity, and verified the non-waking alarm for September 30 at 00:00 with a ten-minute window.
+- APK version **0.7.0 / code 10**; signature verified and certificate SHA-256 matches 0.6.0: `825739c9e1b77f0276094938143f07b6a51e636344c076fa90f6caad869d9744`. Debug-signed personal-test build.
+
+Physical-device widget sizing and date refresh under OEM battery saving remain unverified. Midnight uses a non-waking inexact alarm with an hourly fallback; Android may delay it while asleep.
+
+Spacing follow-up: reduced horizontal padding from 16 to 8 dp and increased vertical padding to 20 dp for five-row months, tightening row spacing. Six-row months retain 14 dp vertical padding so all dates fit at minimum height. Rebuilt and visually inspected the installed widget; tests were not rerun at the user’s request. Updated screenshot: `dist/preview/calendar-widget-spacing.png`.
+
+---
+
 # Verification · 0.6.0 (build 9)
 
 Validated September 29, 2026 using JDK 20 (bytecode target 17), Android SDK 36, the cached Gradle toolchain, and the existing disposable Android 16 / API 36 ARM64 emulator with `skiagl`. Physical Lenovo selection and pen-shortcut acceptance remain pending.

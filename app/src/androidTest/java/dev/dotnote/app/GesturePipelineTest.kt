@@ -1,5 +1,8 @@
 package dev.dotnote.app
 
+import android.graphics.Bitmap
+import android.graphics.Color
+import android.net.Uri
 import android.os.SystemClock
 import android.view.InputDevice
 import android.view.MotionEvent
@@ -9,6 +12,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
+import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.*
 import org.junit.Test
@@ -79,6 +83,92 @@ class GesturePipelineTest {
                 )
             view.dispatchTouchEvent(event)
             event.recycle()
+        }
+    }
+
+    @Test
+    fun importedImageCanBeTappedMovedResizedDeletedAndRestored() {
+        val file = File(instrumentation.targetContext.cacheDir, "selection-${newId()}.png")
+        Bitmap.createBitmap(160, 80, Bitmap.Config.ARGB_8888).let { bitmap ->
+            bitmap.eraseColor(Color.RED)
+            file.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            bitmap.recycle()
+        }
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            lateinit var state: AppState
+            var view: NotebookView? = null
+            scenario.onActivity {
+                state = ViewModelProvider(it)[AppState::class.java]
+                state.createNote("Image selection test")
+            }
+            await { state.note != null && !state.busy }
+            val id = state.note!!.id
+            try {
+                scenario.onActivity { state.importDocument(Uri.fromFile(file)) }
+                await { state.document.items.size == 1 && !state.busy }
+                await {
+                    scenario.onActivity { view = findCanvas(it.window.decorView) }
+                    view?.width?.let { it > 0 } == true
+                }
+                scenario.onActivity {
+                    state.camera(Camera(0f, 0f, 1f))
+                    state.commit(
+                        state.document.items.map {
+                            it.copy(transform = Transform(.5f, .5f, 100f, 100f))
+                        }
+                    )
+                    state.tool = Tool.LASSO
+                    draw(view!!, 150f, 220f, 0f, 0f)
+                }
+                val imageId = state.document.items.single().id
+                assertEquals(setOf(imageId), state.selection)
+                scenario.onActivity { draw(view!!, 150f, 220f, 80f, 40f) }
+                val moved = state.document.items.single()
+                assertEquals(Bounds(180f, 140f, 580f, 340f), moved.bounds)
+                scenario.onActivity { draw(view!!, 580f, 340f, 100f, 50f) }
+                assertEquals(Bounds(180f, 140f, 680f, 390f), state.document.items.single().bounds)
+                scenario.onActivity { state.undo() }
+                assertEquals(moved, state.document.items.single())
+                scenario.onActivity {
+                    state.tool = Tool.ERASER
+                    draw(view!!, 200f, 200f, 50f, 0f)
+                }
+                assertEquals(
+                    "Erasing annotations must not erase an image",
+                    moved,
+                    state.document.items.single(),
+                )
+                scenario.onActivity { state.closeNote() }
+                await { state.note == null && !state.busy }
+                scenario.onActivity { state.open(id) }
+                await { state.note?.id == id && !state.busy }
+                assertEquals(moved, state.document.items.single())
+                await {
+                    scenario.onActivity { view = findCanvas(it.window.decorView) }
+                    view?.width?.let { it > 0 } == true
+                }
+                scenario.onActivity {
+                    state.tool = Tool.LASSO
+                    draw(view!!, 230f, 260f, 0f, 0f)
+                    state.deleteSelection()
+                }
+                assertTrue(state.document.items.isEmpty())
+                scenario.onActivity { state.undo() }
+                assertEquals(moved, state.document.items.single())
+                scenario.onActivity {
+                    state.redo()
+                    state.closeNote()
+                }
+                await { state.note == null && !state.busy }
+                scenario.onActivity { state.open(id) }
+                await { state.note?.id == id && !state.busy }
+                assertTrue(state.document.items.isEmpty())
+                scenario.onActivity { state.closeNote() }
+                await { state.note == null && !state.busy }
+            } finally {
+                file.delete()
+                runBlocking { state.store.dao.deleteNote(id) }
+            }
         }
     }
 

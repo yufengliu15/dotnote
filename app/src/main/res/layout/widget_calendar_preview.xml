@@ -1,0 +1,131 @@
+<!-- Static launcher illustration; live widget labels and dates are localized at render time. -->
+<LinearLayout xmlns:tools="http://schemas.android.com/tools" tools:ignore="HardcodedText,TooManyViews,NestedWeights" xmlns:android="http://schemas.android.com/apk/res/android" android:layout_width="match_parent" android:layout_height="match_parent" android:orientation="horizontal" android:layoutDirection="ltr" android:paddingHorizontal="8dp" android:paddingVertical="4dp" android:background="@drawable/widget_calendar_background" android:contentDescription="@string/widget_calendar_description">
+    <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:orientation="vertical">
+        <TextView style="@style/CalendarMonthTitleCompact" android:text="NOV" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="18dp" android:orientation="horizontal">
+            <TextView style="@style/CalendarPreviewDay" android:text="M" android:textColor="#26282F" android:textSize="13sp" />
+            <TextView style="@style/CalendarPreviewDay" android:text="T" android:textColor="#26282F" android:textSize="13sp" />
+            <TextView style="@style/CalendarPreviewDay" android:text="W" android:textColor="#26282F" android:textSize="13sp" />
+            <TextView style="@style/CalendarPreviewDay" android:text="T" android:textColor="#26282F" android:textSize="13sp" />
+            <TextView style="@style/CalendarPreviewDay" android:text="F" android:textColor="#26282F" android:textSize="13sp" />
+            <TextView style="@style/CalendarPreviewDay" android:text="S" android:textColor="#4A72B6" android:textSize="13sp" />
+            <TextView style="@style/CalendarPreviewDay" android:text="S" android:textColor="#C65D79" android:textSize="13sp" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="vertical">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+                <TextView style="@style/CalendarPreviewDay" android:text="" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="1" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="2" android:textColor="#4A72B6" />
+                <TextView style="@style/CalendarPreviewDay" android:text="3" android:textColor="#C65D79" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+                <TextView style="@style/CalendarPreviewDay" android:text="4" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="5" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="6" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="7" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="8" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="9" android:textColor="#4A72B6" />
+                <TextView style="@style/CalendarPreviewDay" android:text="10" android:textColor="#C65D79" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+                <TextView style="@style/CalendarPreviewDay" android:text="11" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="12" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="13" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="14" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="15" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="16" android:textColor="#4A72B6" />
+                <TextView style="@style/CalendarPreviewDay" android:text="17" android:textColor="#C65D79" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+                <TextView style="@style/CalendarPreviewDay" android:text="18" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="19" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="20" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="21" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="22" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="23" android:textColor="#4A72B6" />
+                <TextView style="@style/CalendarPreviewDay" android:text="24" android:textColor="#C65D79" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+                <TextView style="@style/CalendarPreviewDay" android:text="25" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="26" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="27" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="28" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="29" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="30" android:textColor="#FFFFFF" android:background="@drawable/widget_calendar_today" />
+                <TextView style="@style/CalendarPreviewDay" android:text="" android:textColor="#C65D79" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+    <TextView android:layout_width="16dp" android:layout_height="match_parent" />
+    <LinearLayout android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent" android:orientation="vertical">
+        <TextView style="@style/CalendarMonthTitleCompact" android:text="DEC" />
+        <LinearLayout android:layout_width="match_parent" android:layout_height="18dp" android:orientation="horizontal">
+            <TextView style="@style/CalendarPreviewDay" android:text="M" android:textColor="#26282F" android:textSize="13sp" />
+            <TextView style="@style/CalendarPreviewDay" android:text="T" android:textColor="#26282F" android:textSize="13sp" />
+            <TextView style="@style/CalendarPreviewDay" android:text="W" android:textColor="#26282F" android:textSize="13sp" />
+            <TextView style="@style/CalendarPreviewDay" android:text="T" android:textColor="#26282F" android:textSize="13sp" />
+            <TextView style="@style/CalendarPreviewDay" android:text="F" android:textColor="#26282F" android:textSize="13sp" />
+            <TextView style="@style/CalendarPreviewDay" android:text="S" android:textColor="#4A72B6" android:textSize="13sp" />
+            <TextView style="@style/CalendarPreviewDay" android:text="S" android:textColor="#C65D79" android:textSize="13sp" />
+        </LinearLayout>
+        <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="vertical">
+            <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+                <TextView style="@style/CalendarPreviewDay" android:text="" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="" android:textColor="#4A72B6" />
+                <TextView style="@style/CalendarPreviewDay" android:text="1" android:textColor="#C65D79" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+                <TextView style="@style/CalendarPreviewDay" android:text="2" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="3" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="4" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="5" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="6" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="7" android:textColor="#4A72B6" />
+                <TextView style="@style/CalendarPreviewDay" android:text="8" android:textColor="#C65D79" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+                <TextView style="@style/CalendarPreviewDay" android:text="9" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="10" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="11" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="12" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="13" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="14" android:textColor="#4A72B6" />
+                <TextView style="@style/CalendarPreviewDay" android:text="15" android:textColor="#C65D79" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+                <TextView style="@style/CalendarPreviewDay" android:text="16" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="17" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="18" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="19" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="20" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="21" android:textColor="#4A72B6" />
+                <TextView style="@style/CalendarPreviewDay" android:text="22" android:textColor="#C65D79" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+                <TextView style="@style/CalendarPreviewDay" android:text="23" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="24" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="25" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="26" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="27" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="28" android:textColor="#4A72B6" />
+                <TextView style="@style/CalendarPreviewDay" android:text="29" android:textColor="#C65D79" />
+            </LinearLayout>
+            <LinearLayout android:layout_width="match_parent" android:layout_height="0dp" android:layout_weight="1" android:orientation="horizontal" android:gravity="center_vertical">
+                <TextView style="@style/CalendarPreviewDay" android:text="30" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="31" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="" android:textColor="#26282F" />
+                <TextView style="@style/CalendarPreviewDay" android:text="" android:textColor="#4A72B6" />
+                <TextView style="@style/CalendarPreviewDay" android:text="" android:textColor="#C65D79" />
+            </LinearLayout>
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

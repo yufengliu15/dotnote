@@ -5,6 +5,30 @@ import org.junit.Test
 
 class DocumentTest {
     @Test
+    fun imagesAreSelectableInsideTheirTransformedBoundsAndPersistWithoutUnlockingPdfs() {
+        val image =
+            Item(
+                kind = "PDF",
+                asset = "abc.pdf",
+                image = true,
+                points = listOf(Pt(0f, 0f), Pt(100f, 60f)),
+                transform = Transform(2f, 2f, 30f, 40f),
+            )
+        assertFalse(image.locked)
+        assertEquals(Bounds(30f, 40f, 230f, 160f), image.bounds)
+        assertTrue(hitItem(image, Pt(50f, 140f), 0f))
+        assertFalse(hitItem(image, Pt(250f, 140f), 0f))
+        val polygon = listOf(Pt(45f, 125f), Pt(65f, 125f), Pt(65f, 145f), Pt(45f, 145f))
+        assertTrue(lassoHits(image, polygon))
+        assertFalse(lassoHits(image.copy(image = false), polygon))
+        val doc = Document(listOf(image, image.copy(id = newId(), image = false)))
+        val restored = DocumentCodec.decode(DocumentCodec.encode(doc))
+        assertEquals(doc, restored)
+        assertTrue(restored.items[1].locked)
+        assertEquals(listOf(image), SceneIndex().visible(listOf(image), image.bounds).pages)
+    }
+
+    @Test
     fun zoomPreservesWorldPointUnderFinger() {
         val camera = Camera(-153f, 84f, .65f)
         val focus = Pt(640f, 300f)

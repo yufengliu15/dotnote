@@ -88,13 +88,14 @@ data class Item(
     val cols: Int = 3,
     val asset: String? = null,
     val page: Int = 0,
+    val image: Boolean = false,
 ) {
     val bounds: Bounds =
         transform
             .map(Bounds.of(points))
             .outset(if (kind == "PDF") 0f else width * max(transform.sx, transform.sy))
     val locked
-        get() = kind == "PDF"
+        get() = kind == "PDF" && !image
 }
 
 data class Camera(val x: Float = 40f, val y: Float = 40f, val zoom: Float = 1f) {
@@ -216,11 +217,21 @@ fun shapeSegments(item: Item): List<Pair<Pt, Pt>> {
 
 fun hitItem(item: Item, p: Pt, radius: Float): Boolean {
     if (item.locked || !item.bounds.outset(radius).contains(p)) return false
+    if (item.image) return true
     val tolerance = radius + item.width * max(item.transform.sx, item.transform.sy) / 2
     val pts = item.points.map(item.transform::map)
     if (pts.size == 1) return hypot(p.x - pts[0].x, p.y - pts[0].y) <= tolerance
     val lines = if (item.ink != null) pts.zipWithNext() else shapeSegments(item)
     return lines.any { segmentDistance(p, it.first, it.second) <= tolerance }
+}
+
+fun lassoHits(item: Item, polygon: List<Pt>): Boolean {
+    if (item.locked || polygon.size < 3) return false
+    if (!item.image) return item.points.any { insidePolygon(item.transform.map(it), polygon) }
+    val b = item.bounds
+    return polygon.any(b::contains) ||
+        listOf(Pt(b.left, b.top), Pt(b.right, b.top), Pt(b.right, b.bottom), Pt(b.left, b.bottom))
+            .any { insidePolygon(it, polygon) }
 }
 
 object DocumentCodec {
@@ -248,6 +259,7 @@ object DocumentCodec {
             .put("cols", i.cols)
             .put("asset", i.asset)
             .put("page", i.page)
+            .apply { if (i.image) put("image", true) }
 
     fun decode(text: String): Document {
         val o = JSONObject(text)
@@ -268,6 +280,8 @@ object DocumentCodec {
                     "Invalid attachment name"
                 }
                 val width = i.getDouble("width").toFloat()
+                val image = i.optBoolean("image", false)
+                require(!image || (kind == "PDF" && asset != null)) { "Invalid image attachment" }
                 require(width.isFinite() && width in .1f..100f)
                 val transform = Transform(t.finite(0), t.finite(1), t.finite(2), t.finite(3))
                 require(transform.sx > 0 && transform.sy > 0)
@@ -287,6 +301,7 @@ object DocumentCodec {
                     cols = i.getInt("cols").coerceIn(1, 30),
                     asset = asset,
                     page = i.getInt("page").also { require(it >= 0) },
+                    image = image,
                 )
             }
         require(items.map { it.id }.distinct().size == items.size) { "Duplicate object IDs" }

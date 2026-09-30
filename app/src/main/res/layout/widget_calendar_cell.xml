@@ -1,0 +1,8 @@
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="0dp" android:layout_weight="1" android:layout_height="match_parent">
+    <TextView android:id="@+id/calendar_day" android:layout_width="wrap_content" android:minWidth="20dp"
+        android:layout_height="20dp" android:layout_gravity="center"
+        android:layout_marginHorizontal="1dp" android:gravity="center"
+        android:fontFamily="sans-serif" android:includeFontPadding="false"
+        android:textSize="14sp" android:textColor="#26282F" android:maxLines="1" />
+</FrameLayout>

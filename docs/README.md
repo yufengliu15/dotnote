@@ -2,7 +2,7 @@
 
 Start here when joining the project or changing the app. These documents describe the implementation, not a proposed design.
 
-**Baseline:** app 0.4.0, version code 4; source reviewed at `757c397dd2fac9c0b9d4349ee3d1bee6a50066e6` on 2026-09-29. Documentation changes do not change the APK. If later source differs, use the linked implementation and update these documents with the change.
+**Current release:** app 0.8.1, version code 13. `app/build.gradle.kts` is authoritative for current app metadata; [CHANGELOG.md](../CHANGELOG.md) records changes and [VALIDATION.md](../VALIDATION.md) records what was tested. Historical entries keep their original versions. Follow [versioning and source control](build-test-release.md#versioning-and-source-control) when shipping any change.
 
 ## What the app is
 

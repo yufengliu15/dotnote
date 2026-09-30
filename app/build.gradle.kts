@@ -12,8 +12,8 @@ android {
         applicationId = "dev.dotnote.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 9
-        versionName = "0.6.0"
+        versionCode = 13
+        versionName = "0.8.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures {

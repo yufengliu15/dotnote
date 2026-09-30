@@ -57,7 +57,7 @@ The bottom-right zoom indicator shows saved camera zoom and a “Fit all content
 
 The save label is local status. It does not indicate successful remote backup. Palette editing affects the current vault's settings and is not part of drawing undo.
 
-Editor overflow exposes Import PDF, PDF page navigator, Export entire note as PDF, Export visible area as PDF, Writing settings, How to use Dotnote, and Dotnote version. Both library and editor version buttons open a dialog showing the installed build version and code. The navigator lists imported page items, using page number and an asset prefix; tapping frames that page. PDF page operations and export semantics are described in [PDFs and export](pdf-and-export.md).
+Editor overflow exposes Import PDF, image or PowerPoint, PDF page navigator, Export entire note as PDF, Export visible area as PDF, Writing settings, How to use Dotnote, and Dotnote version. Image imports can be tapped/lassoed with Select, dragged, resized and deleted with undo/redo; the color control is disabled for image-only selections. `.pptx` imports convert offline and show a dismissible report describing conversion limitations. PDF/slide pages stay locked and appear in the page navigator. Both library and editor version buttons open a dialog showing the installed build version and code. The navigator lists locked pages using page number and an asset prefix; tapping frames that page. PDF page operations and export semantics are described in [PDFs and export](pdf-and-export.md).
 
 ## Writing settings and color picker
 

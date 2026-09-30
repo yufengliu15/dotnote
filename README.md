@@ -2,6 +2,16 @@
 
 An offline, native Kotlin notebook for Android tablets. Built with Jetpack Compose, AndroidX Ink 1.0, Room, and Android's PDF renderer. Works offline without an account. Optional GitHub backups; no subscriptions or analytics.
 
+## 0.8.1 import fixes
+
+Image-heavy PowerPoint decks now convert one slide at a time, avoiding the previous cumulative image limit. Imported images work with **Select**: tap or lasso an image, drag to move it, resize with its corner handle, or use the selection trash button. Undo/redo and reopening preserve these edits. Images imported before 0.8.1 need to be reimported because the old build did not record their image origin.
+
+Current app version: **0.8.1 / code 13**. The previous import feature is the **0.8.0** baseline. See [CHANGELOG.md](CHANGELOG.md) and the [versioning and release workflow](docs/build-test-release.md#versioning-and-source-control). Future releases advance the version; historical release numbers remain unchanged.
+
+## 0.7.1 calendar widget
+
+Add **Widgets → Dotnote → Calendar** to your home screen. It defaults to 4×2 cells and can be resized vertically; shorter layouts compact the text and headers so both months remain complete. The rounded, translucent widget shows the current month and the full next month side by side, highlights today, and colors Saturdays blue and Sundays pink. Weeks start on Monday. Tap anywhere to open Dotnote. Month names follow your device language, and the calendar follows your local date and time zone.
+
 ## 0.6.0 default notes app
 
 Dotnote can now be selected as the default notes app on compatible Android devices, including supported Lenovo tablets. Open the library or note menu → **Set as default notes app**, then select the notes category and Dotnote in Android settings.
@@ -34,7 +44,7 @@ Start with [docs/README.md](docs/README.md) for the implementation guide: archit
 
 ## Install
 
-Install `dist/dotnote-0.6.0.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
+Install `dist/dotnote-0.8.1.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
 
 Install this APK over the previous Dotnote build to keep your library.
 
@@ -50,9 +60,10 @@ Create a note from the library. Use a stylus to write, one finger to drag or fli
 - Lines, arrows, rectangles, squares, ellipses, circles, and grids with 1–30 rows/columns.
 - Lasso or tap selection; move, resize using the bottom-right handle, open the selection palette to choose a new color, and delete. Gesture-based undo/redo (80 operations per open note).
 - PDFs imported as locked pages on the canvas with space around them for writing. Original files are copied into private storage. Page navigator and asynchronous page rendering with a bounded bitmap cache.
+- Import images and PowerPoint `.pptx` from the editor's **Import PDF, image or PowerPoint** menu. Images are selectable, movable and deletable; their stored PDF attachments remain portable. PowerPoint slides convert to PDF entirely on-device, one slide at a time, with a 2048-pixel raster limit per slide. Text, embedded images, basic shapes and slide layout positioning are supported. Conversion reports flag omitted/simplified content; complex formatting and fonts may differ. Older `.ppt` files must first be saved as `.pptx` or PDF.
 - Nested folder trees. Breadcrumbs, search by title/name, rename, move, and delete. Folders must be empty before deletion; folder cycles are rejected.
 - Automatic transactional local saves, a visible save indicator, and retry on save failure. Rotation keeps the editor and history alive.
-- Two Android home-screen widgets: a compact New note button and a resizable recent-notes list. New-note creation includes a vault and nested-folder picker.
+- Three Android home-screen widgets: a compact New note button, a resizable recent-notes list, and a two-month calendar. New-note creation includes a vault and nested-folder picker.
 - Rename vaults from the vault chooser; names update in widgets and portable metadata while IDs and repository connections stay intact.
 - The native ink renderer and pen brush initialize when an editor opens, before the first pen-down event.
 - Multiple file-based vaults, each with independent folders, writing preferences and optional GitHub repository. Import/export a complete vault folder; copy files through Android Files → Dotnote vaults.
@@ -62,9 +73,9 @@ Create a note from the library. Use a stylus to write, one finger to drag or fli
 
 ## Home-screen widgets and vault names
 
-Long-press an empty area of the Android home screen, choose **Widgets → Dotnote**, and add **New note** or **Recent notes**. The recent-notes widget also includes New note. Resize it to show more entries; wide layouts use two columns. Entries are ordered by last opening, across all local vaults, and show the vault/folder below the title. Each entry opens its original vault. Opening history is local to the device, persists between sessions, and does not count as editing a note or restart GitHub backup timers. It tracks up to 100 openings with duplicate entries removed; a widget displays as many as fit, up to 32.
+Long-press an empty area of the Android home screen, choose **Widgets → Dotnote**, and add **New note**, **Recent notes**, or **Calendar**. The recent-notes widget also includes New note. Resize it to show more entries; wide layouts use two columns. Entries are ordered by last opening, across all local vaults, and show the vault/folder below the title. Each entry opens its original vault. Opening history is local to the device, persists between sessions, and does not count as editing a note or restart GitHub backup timers. It tracks up to 100 openings with duplicate entries removed; a widget displays as many as fit, up to 32.
 
-The New note dialog lets you choose the vault, browse into any existing folder, and create the note in the displayed location. The same dialog is used inside the app and from both widgets. Cancelling does not create a note. To rename a vault, open the vault chooser and tap the pencil beside its name.
+The New note dialog lets you choose the vault, browse into any existing folder, and create the note in the displayed location. The same dialog is used inside the app and from the two note widgets. Cancelling does not create a note. To rename a vault, open the vault chooser and tap the pencil beside its name.
 
 ## GitHub tablet verification
 

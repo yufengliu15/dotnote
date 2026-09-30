@@ -5,6 +5,8 @@ local.properties
 .idea/
 *.iml
 .DS_Store
+__pycache__/
+*.pyc
 
 # Local release artifacts; publish through releases when needed.
 dist/*.apk

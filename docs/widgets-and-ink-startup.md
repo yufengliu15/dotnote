@@ -4,16 +4,29 @@
 
 ## Home-screen widgets
 
-Two native `AppWidgetProvider`s build Android `RemoteViews`. There is no Glance dependency, collection service, network feed or periodic widget polling.
+Three native `AppWidgetProvider`s build Android `RemoteViews`. There is no Glance dependency, collection service, network feed or network polling.
 
 | Provider | Definition | Behavior |
 | --- | --- | --- |
 | `QuickNoteWidget` | [widget_quick_info.xml](../app/src/main/res/xml/widget_quick_info.xml), [widget_quick_note.xml](../app/src/main/res/layout/widget_quick_note.xml) | New note tile; 64×64 dp minimum, target 1×1 home-screen cells |
 | `RecentNotesWidget` | [widget_recent_info.xml](../app/src/main/res/xml/widget_recent_info.xml), [widget_recent_notes.xml](../app/src/main/res/layout/widget_recent_notes.xml), [widget_note_row.xml](../app/src/main/res/layout/widget_note_row.xml) | New note header plus as many recent entries as fit; 250×250 dp initial minimum, target 3×3 cells, resizable down to 180×80 dp |
+| `CalendarWidget` | [widget_calendar_info.xml](../app/src/main/res/xml/widget_calendar_info.xml), [widget_calendar.xml](../app/src/main/res/layout/widget_calendar.xml) | Current and next month, today highlighted; tap to open Dotnote; target 4×2 cells |
 
-Both are resizable horizontally/vertically, categorized for the home screen, and set `updatePeriodMillis=0`. Their nonexported receivers and metadata are registered in the manifest. Strings and visuals live in [widget_strings.xml](../app/src/main/res/values/widget_strings.xml), [widget_background.xml](../app/src/main/res/drawable/widget_background.xml) and [widget_button.xml](../app/src/main/res/drawable/widget_button.xml).
+The two note widgets are resizable horizontally/vertically, categorized for the home screen, and set `updatePeriodMillis=0`. Their nonexported receivers and metadata are registered in the manifest. Strings and visuals live in [widget_strings.xml](../app/src/main/res/values/widget_strings.xml), [widget_background.xml](../app/src/main/res/drawable/widget_background.xml) and [widget_button.xml](../app/src/main/res/drawable/widget_button.xml).
 
-To add one, the user opens the launcher's widget chooser and selects Dotnote → New note or Recent notes. There is no app-side pin/configuration activity. The launcher controls exact cell sizes and resizing affordances.
+To add one, the user opens the launcher's widget chooser and selects Dotnote → New note, Recent notes, or Calendar. There is no app-side pin/configuration activity. The launcher controls exact cell sizes and resizing affordances.
+
+### Two-month calendar (0.7.0)
+
+[`CalendarWidget`](../app/src/main/java/dev/dotnote/app/CalendarWidget.kt) uses a separate local-date renderer with no vault/database reads. It displays the whole current month and next month with Monday-first weeks, blue Saturdays, pink Sundays, and a dark rounded highlight on today. Both grids share the larger month’s week count, so six-week months retain every date. Month names and accessible date descriptions use the device locale; date boundaries use the device time zone. The translucent pale background is intentionally independent of the app’s green note-widget styling.
+
+[Provider metadata](../app/src/main/res/xml/widget_calendar_info.xml) targets 4×2 launcher cells, initially 250×110 dp and resizable down to that size. Layouts shorter than 180 dp use compact headers, less padding and date text sized to the available week-row height, including six-week months. Exact cell dimensions depend on the launcher. API 31+ sizes use exact responsive `RemoteViews` variants; older hosts use portrait/landscape alternatives. The launcher preview is a static November/December example matching the visual reference; installed widgets render the actual date.
+
+Tapping the root launches `MainActivity` with MAIN/LAUNCHER and the existing task flags. It preserves the current app screen and does not request note creation. The calendar also refreshes when the app starts, on launcher update/resize, local time/time-zone/language changes, reboot and package replacement, and note-widget refreshes.
+
+A non-waking inexact alarm requests an update in the first ten minutes after the next local midnight; the provider’s hourly update is a fallback. The alarm is rescheduled using the next calendar day rather than adding 24 hours, preserving daylight-saving transitions. Removing the last calendar cancels it. Android battery saving may defer updates, so midnight refresh is not guaranteed while asleep ([Android alarm documentation](https://developer.android.com/develop/background-work/services/alarms)). No calendar-event access or exact-alarm permission is needed.
+
+`CalendarRulesTest` covers month alignment, leap years, six-week months, year rollover and 23/25-hour days. `CalendarWidgetTest` inflates actual RemoteViews at 280×200, 360×220 and 500×260 dp, checks today and complete dates, validates the static preview and year rollover, and exercises the root’s PendingIntent without creating a note.
 
 ### Capacity and adaptive layouts
 
@@ -108,6 +121,7 @@ For the emulator-only native teardown crash, the test drains Ink rendering throu
 ## Verification and acceptance
 
 - `WidgetRulesTest`: capacity math and duplicate-name folder paths.
+- `CalendarRulesTest` / `CalendarWidgetTest`: local date boundaries, complete month grids, resizing and app-only tap routing.
 - `WidgetPipelineTest`: rename invariants; persistent recency and metadata changes; inflated responsive layouts and distinct click targets; UI-driven creation in another vault's nested folder and cross-vault reopening.
 - `InkStartupTest`: synthetic first-stroke dispatch and screenshot visibility.
 - `VaultLifecycleTest`: switching preserves separate note/settings state.

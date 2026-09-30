@@ -63,6 +63,7 @@ object NoteWidgets {
     }
 
     fun updateAll(context: Context) {
+        CalendarWidgets.updateAll(context)
         val manager = AppWidgetManager.getInstance(context)
         val vaults = VaultCatalog(context).list().associate { it.localId to it.name }
         val recent = RecentNotes(context).list().filter { it.vaultId in vaults }

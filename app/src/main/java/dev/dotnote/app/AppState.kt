@@ -61,6 +61,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
         private set
 
     var message by mutableStateOf<String?>(null)
+    var importReport by mutableStateOf<String?>(null)
     var tool by mutableStateOf(Tool.PEN)
     var color by mutableIntStateOf(preferences.getInt("color", 0xff25342e.toInt()))
     var palette by
@@ -455,7 +456,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
     fun recolorSelection(value: Int = color) {
         commit(
             document.items.map {
-                if (it.id in selection && !it.locked) it.copy(color = value) else it
+                if (it.id in selection && !it.locked && !it.image) it.copy(color = value) else it
             }
         )
     }
@@ -483,15 +484,18 @@ class AppState(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun importPdf(uri: Uri) = runAction {
+    fun importDocument(uri: Uri) = runAction {
         val id = note?.id ?: return@runAction
+        val destination = store
+        val top = document.bounds?.bottom?.plus(48f) ?: 0f
         val imported =
             withContext(Dispatchers.IO) {
-                PdfFiles.import(store, uri, document.bounds?.bottom?.plus(48f) ?: 0f)
+                DocumentImport.import(destination, uri, top)
             }
-        if (note?.id == id) {
-            commit(document.items + imported)
-            message = "Imported ${imported.size} PDF pages"
+        if (note?.id == id && store === destination) {
+            commit(document.items + imported.items)
+            message = imported.message
+            importReport = imported.conversionReport
         }
     }
 

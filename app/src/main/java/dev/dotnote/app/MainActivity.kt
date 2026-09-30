@@ -76,6 +76,11 @@ internal fun DotnoteTheme(content: @Composable () -> Unit) {
 class MainActivity : ComponentActivity() {
     private var widgetRequest by mutableStateOf<WidgetAction?>(null)
 
+    override fun onStart() {
+        super.onStart()
+        CalendarWidgets.updateAll(this)
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
@@ -658,6 +663,16 @@ private fun MoveDialog(
 
 @Composable
 internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() -> Unit)? = null) {
+    state.importReport?.let { report ->
+        AlertDialog(
+            onDismissRequest = { state.importReport = null },
+            title = { Text("PowerPoint converted to PDF") },
+            text = { Text(report, Modifier.verticalScroll(rememberScrollState())) },
+            confirmButton = {
+                TextButton(onClick = { state.importReport = null }) { Text("Done") }
+            },
+        )
+    }
     var canvas by remember { mutableStateOf<NotebookView?>(null) }
     var settings by remember { mutableStateOf(false) }
     var shapes by remember { mutableStateOf(false) }
@@ -669,9 +684,9 @@ internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() ->
     var colorSlot by remember { mutableStateOf<Int?>(null) }
     var selectionColor by remember { mutableStateOf(false) }
     var exportRegion by remember { mutableStateOf<Bounds?>(null) }
-    val importPdf =
+    val importDocument =
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
-            it?.let(state::importPdf)
+            it?.let(state::importDocument)
         }
     val exportPdf =
         rememberLauncherForActivityResult(
@@ -781,12 +796,12 @@ internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() ->
                     }
                     DropdownMenu(overflow, { overflow = false }) {
                         DropdownMenuItem(
-                            text = { Text("Import PDF") },
+                            text = { Text("Import PDF, image or PowerPoint") },
                             leadingIcon = { Icon(Icons.Outlined.PictureAsPdf, null) },
                             onClick = {
                                 overflow = false
                                 canvas?.settle()
-                                importPdf.launch(arrayOf("application/pdf"))
+                                importDocument.launch(DocumentImport.mimeTypes)
                             },
                         )
                         DropdownMenuItem(
@@ -909,6 +924,9 @@ internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() ->
                                 fontSize = 12.sp,
                             )
                             IconButton(
+                                enabled = state.document.items.any {
+                                    it.id in state.selection && !it.locked && !it.image
+                                },
                                 onClick = {
                                     canvas?.settle()
                                     selectionColor = true

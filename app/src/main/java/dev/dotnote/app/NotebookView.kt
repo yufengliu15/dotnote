@@ -712,10 +712,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
                             ?.let { setOf(it.id) } ?: emptySet()
                     } else
                         state.document.items
-                            .filter { item ->
-                                !item.locked &&
-                                    item.points.any { insidePolygon(item.transform.map(it), lasso) }
-                            }
+                            .filter { item -> lassoHits(item, lasso) }
                             .map(Item::id)
                             .toSet()
                 state.selection = selected
@@ -741,6 +738,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
         state.preview(
             state.document.items.filterNot { item ->
                 !item.locked &&
+                    !item.image &&
                     (0..steps).any { s ->
                         hitItem(
                             item,
