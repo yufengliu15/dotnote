@@ -1,0 +1,656 @@
+package dev.dotnote.app
+
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Matrix
+import android.graphics.Paint
+import android.graphics.RectF
+import android.os.Process
+import android.os.SystemClock
+import java.util.IdentityHashMap
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import kotlin.math.abs
+import kotlin.math.floor
+import kotlin.math.roundToInt
+
+/**
+ * Raster cache for finished ink and marker strokes.
+ *
+ * Drawing every visible stroke on every frame made pan, zoom and pen-up cost grow with the number
+ * of strokes on screen. Instead, the scene is rendered once into 512 px tiles at the current zoom
+ * on a background thread, and frames only blit tiles. Edits update tiles precisely:
+ * - an appended stroke is drawn onto the existing tiles it touches (it is topmost);
+ * - any other edit re-renders only tiles that intersect the changed items;
+ * - while a selection is dragged, it is excluded from tiles and drawn live on top.
+ * Missing tiles fall back to a lower-resolution level, then to direct vector drawing, so a frame
+ * is never blank or stale. All public methods run on the UI thread.
+ */
+internal class SceneTiles(
+    private val post: (Runnable) -> Unit,
+    private val postDelayed: (Runnable, Long) -> Unit,
+    private val changed: () -> Unit,
+    strokes: StrokeCache,
+) {
+    companion object {
+        const val SIZE = 512
+        private const val BUDGET_BYTES = 96L * 1024 * 1024
+        private const val MOTION_MS = 140L
+        private const val LOG_LIMIT = 96
+    }
+
+    private class Level(val scale: Float) {
+        val tiles = HashMap<Long, Tile>()
+    }
+
+    private class Tile(val level: Level, val x: Int, val y: Int) {
+        // Two device pixels of antialiasing margin, in world units.
+        val pad = 2f / level.scale
+        var ink: Bitmap? = null
+        var marker: Bitmap? = null
+        var ready = false
+        var inFlight = false
+        // Scene version whose render failed; vector fallback covers it until the scene changes.
+        var failedAt = -1
+        var used = 0L
+        val world =
+            Bounds(
+                x * SIZE / level.scale,
+                y * SIZE / level.scale,
+                (x + 1) * SIZE / level.scale,
+                (y + 1) * SIZE / level.scale,
+            )
+    }
+
+    /** One scene edit, kept so tiles rendered from an older scene can catch up. */
+    private class Change(val version: Int, val appended: List<Item>?, val dirty: List<Bounds>?)
+
+    private val worker: ExecutorService =
+        Executors.newSingleThreadExecutor { r ->
+            Thread(
+                    {
+                        Process.setThreadPriority(
+                            Process.THREAD_PRIORITY_DEFAULT + Process.THREAD_PRIORITY_LESS_FAVORABLE
+                        )
+                        r.run()
+                    },
+                    "Dotnote-Tiles",
+                )
+                .apply { isDaemon = true }
+        }
+    private val uiRenderer = ObjectRenderer(vectorHighlights = false, sharedStrokes = strokes)
+    private val workerRenderer = ObjectRenderer(vectorHighlights = false, sharedStrokes = strokes)
+    private val workerIndex = SceneIndex()
+    private val workerScratch = IntList()
+    private val pool = ConcurrentLinkedQueue<Bitmap>()
+    private val quarantine = ArrayDeque<Pair<Long, Bitmap>>()
+    private val blit = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val dst = RectF()
+    private val tileMatrix = Matrix()
+
+    private var level: Level? = null
+    private var previous: Level? = null
+    private var lastScale = 0f
+    private var scaleChangedAt = 0L
+    private var settleQueued = false
+    private var frame = 0L
+    private var disposed = false
+    private var inFlight = 0
+
+    // Tile scene: the document without hidden (handing-off) and excluded (dragged) items.
+    private var allItems: List<Item>? = null
+    private var excludedIds: Set<String> = emptySet()
+    private var hiddenIds: Set<String> = emptySet()
+    var items: List<Item> = emptyList()
+        private set
+
+    private var version = 0
+    private var resetVersion = 0
+    private val log = ArrayDeque<Change>()
+    var colorOrder = IntArray(0)
+        private set
+
+    var hasMarkers = false
+        private set
+
+    private val wanted = ArrayList<Tile>()
+    private var bytes = 0L
+
+    internal var tileRenders = 0
+        private set
+
+    /** Brings the tile scene up to date with the document; cheap when nothing changed. */
+    fun update(all: List<Item>, excluded: Set<String>, hidden: Collection<String>) {
+        val hiddenNow = if (hidden.isEmpty()) emptySet() else hidden.toHashSet()
+        if (all === allItems && excluded == excludedIds && hiddenNow == hiddenIds) return
+        allItems = all
+        excludedIds = excluded
+        hiddenIds = hiddenNow
+        val desired =
+            if (excluded.isEmpty() && hiddenNow.isEmpty()) all
+            else all.filter { it.id !in excluded && it.id !in hiddenNow }
+        val old = items
+        if (desired === old) return
+        if (desired.size == old.size) {
+            var same = true
+            for (i in desired.indices) if (desired[i] !== old[i]) {
+                same = false
+                break
+            }
+            if (same) return
+        }
+        items = desired
+        val order = markerOrder(desired)
+        hasMarkers = order.isNotEmpty()
+        val reordered = !order.contentEquals(colorOrder)
+        colorOrder = order
+        // Pure append: draw the new items on top of every ready tile they touch.
+        if (!reordered && desired.size > old.size && old.isNotEmpty()) {
+            var prefix = true
+            for (i in old.indices) if (desired[i] !== old[i]) {
+                prefix = false
+                break
+            }
+            if (prefix) {
+                val appended = desired.subList(old.size, desired.size).toList()
+                record(Change(++version, appended, null))
+                dropPrevious()
+                level?.tiles?.values?.forEach { tile ->
+                    if (tile.ready) applyAppend(tile, appended)
+                }
+                return
+            }
+        }
+        val dirty = ArrayList<Bounds>()
+        if (desired.size == old.size) {
+            for (i in desired.indices) if (desired[i] !== old[i]) {
+                dirty.add(old[i].bounds)
+                dirty.add(desired[i].bounds)
+            }
+        } else {
+            val before = IdentityHashMap<Item, Unit>(old.size * 2)
+            old.forEach { before[it] = Unit }
+            val after = IdentityHashMap<Item, Unit>(desired.size * 2)
+            desired.forEach {
+                after[it] = Unit
+                if (!before.containsKey(it)) dirty.add(it.bounds)
+            }
+            old.forEach { if (!after.containsKey(it)) dirty.add(it.bounds) }
+        }
+        if (reordered) {
+            // Marker colors stack by last use; every tile with markers must be redrawn.
+            old.forEach { if (it.kind == "HIGHLIGHTER") dirty.add(it.bounds) }
+            desired.forEach { if (it.kind == "HIGHLIGHTER") dirty.add(it.bounds) }
+        }
+        if (dirty.size > 4000) {
+            reset()
+            return
+        }
+        record(Change(++version, null, dirty))
+        dropPrevious()
+        level?.tiles?.values?.forEach { tile ->
+            if (tile.ready && dirty.any { it.outset(tile.pad).intersects(tile.world) }) invalidate(tile)
+        }
+    }
+
+    private fun markerOrder(list: List<Item>): IntArray {
+        var colors: LinkedHashSet<Int>? = null
+        for (i in list.indices.reversed()) {
+            val item = list[i]
+            if (item.kind == "HIGHLIGHTER") {
+                if (colors == null) colors = LinkedHashSet()
+                colors.add(item.color)
+            }
+        }
+        // Built from the end, so reverse: the most recently used color is drawn last (on top).
+        return colors?.toIntArray()?.reversedArray() ?: IntArray(0)
+    }
+
+    private fun record(change: Change) {
+        log.addLast(change)
+        while (log.size > LOG_LIMIT) log.removeFirst()
+    }
+
+    /** Discards every tile; jobs started before now are dropped when they finish. */
+    private fun reset() {
+        version++
+        resetVersion = version
+        log.clear()
+        listOfNotNull(level, previous).forEach { l -> l.tiles.values.forEach(::invalidate) }
+        previous = null
+    }
+
+    private fun dropPrevious() {
+        previous?.tiles?.values?.forEach(::invalidate)
+        previous = null
+    }
+
+    private fun invalidate(tile: Tile) {
+        tile.ready = false
+        release(tile.ink)
+        release(tile.marker)
+        tile.ink = null
+        tile.marker = null
+    }
+
+    private fun release(bitmap: Bitmap?) {
+        bitmap ?: return
+        bytes -= bitmap.allocationByteCount
+        quarantine.addLast(SystemClock.uptimeMillis() to bitmap)
+    }
+
+    private fun recycleQuarantine() {
+        // A bitmap may still be referenced by the frame being displayed; reuse it a bit later.
+        val now = SystemClock.uptimeMillis()
+        while (quarantine.isNotEmpty() && now - quarantine.first().first > 300) {
+            val bitmap = quarantine.removeFirst().second
+            if (pool.size < 16) pool.add(bitmap)
+        }
+    }
+
+    private fun obtain(): Bitmap =
+        pool.poll()?.also { it.eraseColor(0) }
+            ?: Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888)
+
+    private fun tileCanvas(tile: Tile, bitmap: Bitmap): Pair<Canvas, Matrix> {
+        val canvas = Canvas(bitmap)
+        canvas.translate(-tile.x * SIZE.toFloat(), -tile.y * SIZE.toFloat())
+        canvas.scale(tile.level.scale, tile.level.scale)
+        return canvas to Matrix(canvas.matrix)
+    }
+
+    /** Draws appended items onto a tile's bitmaps (UI thread or completion handler). */
+    private fun applyAppend(tile: Tile, appended: List<Item>) {
+        val ink = appended.filter { isInk(it) && it.bounds.outset(tile.pad).intersects(tile.world) }
+        val marker =
+            appended.filter {
+                it.kind == "HIGHLIGHTER" && it.bounds.outset(tile.pad).intersects(tile.world)
+            }
+        if (ink.isNotEmpty()) {
+            val bitmap = tile.ink ?: obtain().also {
+                tile.ink = it
+                bytes += it.allocationByteCount
+            }
+            val (canvas, matrix) = tileCanvas(tile, bitmap)
+            ink.forEach { uiRenderer.draw(canvas, it, matrix) }
+        }
+        if (marker.isNotEmpty()) {
+            val bitmap = tile.marker ?: obtain().also {
+                tile.marker = it
+                bytes += it.allocationByteCount
+            }
+            val (canvas, _) = tileCanvas(tile, bitmap)
+            uiRenderer.drawMarkerFills(canvas, marker, colorOrder)
+        }
+    }
+
+    private fun isInk(item: Item) = item.kind != "PDF" && item.kind != "HIGHLIGHTER"
+
+    /** Chooses the tile level for this frame; zoom gestures reuse the previous level scaled. */
+    private fun levelFor(scale: Float): Level {
+        val now = SystemClock.uptimeMillis()
+        if (scale != lastScale) {
+            lastScale = scale
+            scaleChangedAt = now
+        }
+        val current = level
+        if (current == null) return Level(scale).also { level = it }
+        if (current.scale == scale) return current
+        val ratio = scale / current.scale
+        val moving = now - scaleChangedAt < MOTION_MS
+        if (moving && ratio in .5f..2f) {
+            if (!settleQueued) {
+                settleQueued = true
+                postDelayed(
+                    Runnable {
+                        settleQueued = false
+                        changed()
+                    },
+                    MOTION_MS + 10,
+                )
+            }
+            return current
+        }
+        dropPrevious()
+        previous = current
+        return Level(scale).also { level = it }
+    }
+
+    private class Frame(
+        val level: Level,
+        val scale: Float,
+        val ox: Float,
+        val oy: Float,
+        val x0: Int,
+        val y0: Int,
+        val x1: Int,
+        val y1: Int,
+        val moving: Boolean,
+    )
+
+    private var lastFrameKey: Any? = null
+    private var lastFrame: Frame? = null
+
+    private fun frame(camera: Camera, density: Float, width: Int, height: Int): Frame {
+        val key = Triple(camera, width, height)
+        lastFrame?.let { if (lastFrameKey == key && it.level === level && !it.moving) return it }
+        frame++
+        recycleQuarantine()
+        val scale = camera.zoom * density
+        val l = levelFor(scale)
+        val ox = camera.x * density
+        val oy = camera.y * density
+        // Tiles at level scale L cover level pixels [i*SIZE, (i+1)*SIZE).
+        val r = l.scale / scale
+        val x0 = floor((-ox) * r / SIZE).toInt()
+        val y0 = floor((-oy) * r / SIZE).toInt()
+        val x1 = floor((width - ox) * r / SIZE).toInt()
+        val y1 = floor((height - oy) * r / SIZE).toInt()
+        val result = Frame(l, scale, ox, oy, x0, y0, x1, y1, l.scale != scale)
+        lastFrameKey = key
+        lastFrame = result
+        return result
+    }
+
+    private fun tile(l: Level, x: Int, y: Int): Tile =
+        l.tiles.getOrPut((x.toLong() shl 32) xor (y.toLong() and 0xffffffffL)) { Tile(l, x, y) }
+
+    /** Requests visible tiles first, then one ring around the viewport. */
+    private fun schedule(f: Frame) {
+        wanted.clear()
+        if (f.moving || disposed) return
+        val cx = (f.x0 + f.x1) / 2f
+        val cy = (f.y0 + f.y1) / 2f
+        val visible = ArrayList<Tile>()
+        for (y in f.y0..f.y1) for (x in f.x0..f.x1) {
+            val t = tile(f.level, x, y)
+            t.used = frame
+            if (!t.ready && !t.inFlight && t.failedAt != version) visible.add(t)
+        }
+        visible.sortBy { abs(it.x - cx) + abs(it.y - cy) }
+        wanted.addAll(visible)
+        for (y in f.y0 - 1..f.y1 + 1) for (x in f.x0 - 1..f.x1 + 1) {
+            if (x in f.x0..f.x1 && y in f.y0..f.y1) continue
+            val t = tile(f.level, x, y)
+            t.used = frame
+            if (!t.ready && !t.inFlight && t.failedAt != version) wanted.add(t)
+        }
+        pump()
+    }
+
+    private fun pump() {
+        if (disposed) return
+        while (inFlight < 1 && wanted.isNotEmpty()) {
+            val t = wanted.removeAt(0)
+            if (t.ready || t.inFlight || t.level !== level || t.failedAt == version) continue
+            submit(t)
+        }
+    }
+
+    private fun submit(t: Tile) {
+        t.inFlight = true
+        inFlight++
+        val snapshot = items
+        val jobVersion = version
+        val order = colorOrder
+        val pooled = arrayOf(pool.poll(), pool.poll())
+        worker.execute {
+            var ink: Bitmap? = null
+            var marker: Bitmap? = null
+            var failed = false
+            val unused = pooled.filterNotNull().toMutableList()
+            try {
+                workerIndex.query(snapshot, t.world.outset(t.pad), workerScratch)
+                val inkItems = ArrayList<Item>()
+                val markerItems = ArrayList<Item>()
+                for (k in 0 until workerScratch.size) {
+                    val item = snapshot[workerScratch[k]]
+                    if (item.kind == "HIGHLIGHTER") markerItems.add(item)
+                    else if (item.kind != "PDF") inkItems.add(item)
+                }
+                fun bitmap(): Bitmap =
+                    (unused.removeFirstOrNull()?.also { it.eraseColor(0) }
+                        ?: Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888))
+                if (inkItems.isNotEmpty()) {
+                    ink = bitmap()
+                    val (canvas, matrix) = tileCanvas(t, ink!!)
+                    inkItems.forEach { workerRenderer.draw(canvas, it, matrix) }
+                    ink!!.prepareToDraw()
+                }
+                if (markerItems.isNotEmpty()) {
+                    marker = bitmap()
+                    val (canvas, _) = tileCanvas(t, marker!!)
+                    workerRenderer.drawMarkerFills(canvas, markerItems, order)
+                    marker!!.prepareToDraw()
+                }
+            } catch (e: Throwable) {
+                ink = null
+                marker = null
+                failed = true
+                android.util.Log.w("DotnoteTiles", "Tile render failed", e)
+            }
+            unused.forEach { pool.add(it) }
+            val inkResult = ink
+            val markerResult = marker
+            post(Runnable { complete(t, jobVersion, inkResult, markerResult, failed) })
+        }
+    }
+
+    private fun complete(t: Tile, jobVersion: Int, ink: Bitmap?, marker: Bitmap?, failed: Boolean) {
+        inFlight--
+        t.inFlight = false
+        tileRenders++
+        if (failed) {
+            t.failedAt = jobVersion
+            pump()
+            return
+        }
+        fun discard() {
+            ink?.let { pool.add(it) }
+            marker?.let { pool.add(it) }
+        }
+        if (disposed || (t.level !== level && t.level !== previous) || jobVersion < resetVersion) {
+            discard()
+            pump()
+            return
+        }
+        // Catch up with edits made while this tile was rendering.
+        val pending = log.filter { it.version > jobVersion }
+        val replayable = pending.size == version - jobVersion
+        if (
+            !replayable ||
+                pending.any { change ->
+                    change.dirty?.any { it.outset(t.pad).intersects(t.world) } == true
+                }
+        ) {
+            discard()
+            if (t.level === level) wanted.add(0, t)
+            pump()
+            return
+        }
+        t.ink = ink
+        t.marker = marker
+        ink?.let { bytes += it.allocationByteCount }
+        marker?.let { bytes += it.allocationByteCount }
+        t.ready = true
+        pending.forEach { change -> change.appended?.let { applyAppend(t, it) } }
+        trim()
+        changed()
+        pump()
+    }
+
+    /** Keeps tile memory bounded, evicting tiles that were not needed by the latest frame. */
+    private fun trim() {
+        if (bytes <= BUDGET_BYTES) return
+        val candidates =
+            listOfNotNull(previous, level)
+                .flatMap { it.tiles.values }
+                .filter { it.ready && it.used < frame && (it.ink != null || it.marker != null) }
+                .sortedWith(compareBy({ it.level === level }, { it.used }))
+        for (t in candidates) {
+            if (bytes <= BUDGET_BYTES * 3 / 4) break
+            invalidate(t)
+            t.level.tiles.remove((t.x.toLong() shl 32) xor (t.y.toLong() and 0xffffffffL))
+        }
+        // Forget empty bookkeeping for far-away tiles.
+        level?.tiles?.values?.removeAll { !it.ready && !it.inFlight && it.used < frame - 600 }
+    }
+
+    /**
+     * Draws one layer. [fallback] renders the given world rectangle directly (vector); it is used
+     * only where neither the current nor the previous level has a finished tile, in one pass
+     * clipped to the missing area. When `complete` is false the area is already being rendered,
+     * so the fallback may leave out strokes whose geometry is not built yet; they appear with
+     * their tile instead of stalling this frame on tessellation.
+     */
+    fun draw(
+        canvas: Canvas,
+        camera: Camera,
+        density: Float,
+        width: Int,
+        height: Int,
+        markers: Boolean,
+        fallback: (canvas: Canvas, area: Bounds, complete: Boolean) -> Unit,
+    ) {
+        val f = frame(camera, density, width, height)
+        if (!markers) schedule(f)
+        var missing: ArrayList<Tile>? = null
+        for (y in f.y0..f.y1) for (x in f.x0..f.x1) {
+            val t = tile(f.level, x, y)
+            t.used = frame
+            if (t.ready) {
+                drawTile(canvas, f, t, if (markers) t.marker else t.ink)
+                continue
+            }
+            canvas.save()
+            screenRect(f, t)
+            canvas.clipRect(dst)
+            val covered = drawPrevious(canvas, f, t, markers)
+            canvas.restore()
+            if (!covered) (missing ?: ArrayList<Tile>().also { missing = it }).add(t)
+        }
+        val gaps = missing ?: return
+        var world = gaps[0].world
+        var left = Float.MAX_VALUE
+        var top = Float.MAX_VALUE
+        var right = -Float.MAX_VALUE
+        var bottom = -Float.MAX_VALUE
+        gaps.forEach {
+            world = world.union(it.world)
+            screenRect(f, it)
+            left = minOf(left, dst.left)
+            top = minOf(top, dst.top)
+            right = maxOf(right, dst.right)
+            bottom = maxOf(bottom, dst.bottom)
+        }
+        canvas.save()
+        canvas.clipRect(left, top, right, bottom)
+        val gapSet = gaps.toHashSet()
+        for (y in f.y0..f.y1) for (x in f.x0..f.x1) {
+            val t = tile(f.level, x, y)
+            if (t in gapSet) continue
+            screenRect(f, t)
+            if (dst.intersects(left, top, right, bottom)) canvas.clipOutRect(dst)
+        }
+        // Tiles on their way may skip strokes that are not built yet; failed tiles may not.
+        fallback(canvas, world, gaps.any { it.failedAt == version || f.moving })
+        canvas.restore()
+    }
+
+    private fun screenRect(f: Frame, t: Tile) {
+        if (!f.moving) {
+            val ox = f.ox.roundToInt()
+            val oy = f.oy.roundToInt()
+            dst.set(
+                (t.x * SIZE + ox).toFloat(),
+                (t.y * SIZE + oy).toFloat(),
+                ((t.x + 1) * SIZE + ox).toFloat(),
+                ((t.y + 1) * SIZE + oy).toFloat(),
+            )
+        } else {
+            val k = f.scale / t.level.scale
+            dst.set(
+                t.x * SIZE * k + f.ox,
+                t.y * SIZE * k + f.oy,
+                (t.x + 1) * SIZE * k + f.ox,
+                (t.y + 1) * SIZE * k + f.oy,
+            )
+        }
+    }
+
+    private fun drawTile(canvas: Canvas, f: Frame, t: Tile, bitmap: Bitmap?) {
+        bitmap ?: return
+        if (!f.moving && t.level === f.level) {
+            // Whole-pixel placement: no resampling and no seams between tiles.
+            canvas.drawBitmap(
+                bitmap,
+                (t.x * SIZE + f.ox.roundToInt()).toFloat(),
+                (t.y * SIZE + f.oy.roundToInt()).toFloat(),
+                null,
+            )
+        } else {
+            val k = f.scale / t.level.scale
+            dst.set(
+                t.x * SIZE * k + f.ox,
+                t.y * SIZE * k + f.oy,
+                (t.x + 1) * SIZE * k + f.ox,
+                (t.y + 1) * SIZE * k + f.oy,
+            )
+            canvas.drawBitmap(bitmap, null, dst, blit)
+        }
+    }
+
+    /** Covers a missing tile with finished tiles from the previous zoom level, if complete. */
+    private fun drawPrevious(canvas: Canvas, f: Frame, t: Tile, markers: Boolean): Boolean {
+        val p = previous ?: return false
+        if (p === f.level) return false
+        val x0 = floor(t.world.left * p.scale / SIZE).toInt()
+        val y0 = floor(t.world.top * p.scale / SIZE).toInt()
+        val x1 = floor((t.world.right * p.scale - .01f) / SIZE).toInt()
+        val y1 = floor((t.world.bottom * p.scale - .01f) / SIZE).toInt()
+        if ((x1 - x0 + 1).toLong() * (y1 - y0 + 1) > 16) return false
+        for (y in y0..y1) for (x in x0..x1) {
+            val pt = p.tiles[(x.toLong() shl 32) xor (y.toLong() and 0xffffffffL)]
+            if (pt == null || !pt.ready) return false
+        }
+        val frameForPrevious = Frame(p, f.scale, f.ox, f.oy, 0, 0, 0, 0, true)
+        for (y in y0..y1) for (x in x0..x1) {
+            val pt = p.tiles.getValue((x.toLong() shl 32) xor (y.toLong() and 0xffffffffL))
+            pt.used = frame
+            drawTile(canvas, frameForPrevious, pt, if (markers) pt.marker else pt.ink)
+        }
+        return true
+    }
+
+    /** Vector fallback helper: world-to-screen matrix for the current camera. */
+    fun worldMatrix(camera: Camera, density: Float): Matrix =
+        tileMatrix.apply {
+            setValues(
+                floatArrayOf(
+                    camera.zoom * density,
+                    0f,
+                    camera.x * density,
+                    0f,
+                    camera.zoom * density,
+                    camera.y * density,
+                    0f,
+                    0f,
+                    1f,
+                )
+            )
+        }
+
+    fun release() {
+        disposed = true
+        worker.shutdown()
+        listOfNotNull(level, previous).forEach { it.tiles.clear() }
+        level = null
+        previous = null
+        pool.clear()
+        quarantine.clear()
+    }
+
+    /** True when every tile needed for this view is finished (used by tests/benchmarks). */
+    internal fun idle(): Boolean = inFlight == 0 && wanted.isEmpty()
+}

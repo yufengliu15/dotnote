@@ -1,10 +1,24 @@
 # Drawing and input pipeline
 
-[Documentation index](README.md) · Sources: [NotebookView.kt](../app/src/main/java/dev/dotnote/app/NotebookView.kt), [Rendering.kt](../app/src/main/java/dev/dotnote/app/Rendering.kt), [Document.kt](../app/src/main/java/dev/dotnote/app/Document.kt), [SceneResources.kt](../app/src/main/java/dev/dotnote/app/SceneResources.kt)
+[Documentation index](README.md) · Sources: [NotebookView.kt](../app/src/main/java/dev/dotnote/app/NotebookView.kt), [SceneTiles.kt](../app/src/main/java/dev/dotnote/app/SceneTiles.kt), [Rendering.kt](../app/src/main/java/dev/dotnote/app/Rendering.kt), [Document.kt](../app/src/main/java/dev/dotnote/app/Document.kt), [SceneResources.kt](../app/src/main/java/dev/dotnote/app/SceneResources.kt)
 
 ## Two rendering paths, one saved model
 
-`NotebookView` is a `FrameLayout` containing separate background, highlighter, and foreground Views with an AndroidX Ink `InProgressStrokesView` above them. Completed content is rendered by `ObjectRenderer`. The native overlay gives pen strokes low-latency live display; completed strokes become ordinary immutable `Item`s in `AppState.document`.
+`NotebookView` is a `FrameLayout` containing separate background, highlighter, and foreground Views with an AndroidX Ink `InProgressStrokesView` above them. Completed content is rendered by `ObjectRenderer` into raster tiles (`SceneTiles`, below); frames composite those tiles. The native overlay gives pen strokes low-latency live display; completed strokes become ordinary immutable `Item`s in `AppState.document`.
+
+## Tiled scene rendering (0.10.0)
+
+Completed pen, shape, text and marker content is drawn once into 512×512 px bitmap tiles at the current zoom and then blitted, so a pan, zoom or redraw costs a few bitmap draws regardless of how many strokes are visible. `SceneTiles` keeps two bitmaps per tile (marker fills and ink); empty layers have no bitmap.
+
+- **Rendering:** a single background thread (`Dotnote-Tiles`) renders visible tiles nearest the center first, then a one-tile ring around the viewport. It queries its own `SceneIndex` over an immutable snapshot of the item list. Native Ink strokes are shared between threads through `StrokeCache` (an LRU of 3,000 tessellated strokes; Ink strokes are immutable), so a stroke is tessellated once.
+- **Placement:** at rest, tiles are drawn at whole-pixel offsets of the camera (no resampling, no seams). Item bounds are tested with two device pixels of antialiasing margin.
+- **Zoom:** during a pinch (scale changed within the last 140 ms and within 0.5×–2× of the tile level) the current tiles are drawn scaled. When the zoom settles, tiles are rendered for the exact new scale; the previous level fills gaps until they arrive.
+- **Gaps:** a tile that is not ready is covered by the previous level if it has every overlapping tile, otherwise by direct vector drawing of just the missing area (one clipped pass). While a gap is already being rendered, that fallback skips strokes whose native geometry is not built yet; they appear with their tile instead of stalling the frame on tessellation (for example, the first frames of a freshly opened dense note). Failed tile renders are drawn completely by the fallback.
+- **Edits:** the tile scene is the document without hidden hand-off strokes and without a selection being dragged. A pure append (pen-up, new shape/text) draws the new items onto the ready tiles they touch immediately; it is topmost. Other edits (erase, delete, undo, recolor, drop) invalidate only tiles intersecting the old and new bounds of the changed items, found by identity. Tiles whose render started before an edit replay later appends or are discarded and re-rendered if a later edit touched them. A change in marker color stacking redraws tiles containing markers.
+- **Dragging a selection:** while a move/resize gesture is active the selected items are excluded from tiles and drawn live above them; on release they rejoin in document order and the affected tiles re-render.
+- **Memory:** up to 96 MB of tile bitmaps; least recently needed tiles outside the latest frame are evicted first, previous zoom levels before current ones. Released bitmaps are reused after 300 ms (they may still be referenced by the displayed frame).
+
+`TileRenderingTest` compares tiled frames against direct vector rendering after appends, erasing, marker reordering, drags, pans and zoom changes.
 
 Pen and marker brush families are lazily cached stock AndroidX families (`pressurePen`, `highlighter`). Brush epsilon is `0.1`. Both brushes are prepared during view construction and refreshed when color/width changes; `ink.eagerInit()` runs on attachment. Native stroke preparation starts asynchronously at activity launch, and an offscreen stroke exercises the authoring surface after its first layout. See [startup details](widgets-and-ink-startup.md).
 
@@ -37,13 +51,13 @@ Real samples include historical coordinates, elapsed event time and pressure cla
 
 `strokeItem` Base64-encodes the Ink input batch, records a parallel point list for geometry, records brush width, and stores opaque ARGB. Completed pen rendering decodes inputs and reconstructs the stock brush. It applies item transform and the world-to-screen matrix consistently; this is why zoomed strokes remain aligned after reopening.
 
-The native stroke cache retains every visible stroke plus up to 400 offscreen entries. This prevents sequential redraws of more than 400 visible strokes from evicting and rebuilding every mesh on each frame. Entries validate color, width and encoded inputs; transforms reuse native geometry. Shape/grid line coordinates are cached by immutable item identity and drawn in one batch per object. Visible geometry memory therefore scales with the visible working set, not a fixed 400-object cap.
+The editor's tile and fallback renderers share one native stroke cache (`StrokeCache`, 3,000 entries). Standalone `ObjectRenderer`s (PDF export, tests) retain every visible stroke plus up to 400 offscreen entries. Entries validate color, width and encoded inputs; transforms reuse native geometry. Shape/grid line coordinates are cached by immutable item identity and drawn in one batch per object. Visible geometry memory therefore scales with the visible working set, not a fixed 400-object cap.
 
 ## Constant-opacity highlighter
 
 Highlighter uses five times the current pen width. Its live preview is a mutable `LiveHighlight`: real input points append to paths capped at 128 segments each. No full point-list copy, Item bounds calculation, filled-outline construction, or boolean path union runs on every move. Pointer-up encodes the recorded inputs directly; it does not tessellate a native highlighter stroke just to save it.
 
-The interactive `ObjectRenderer(vectorHighlights = false)` caches finished outlines and groups them by color. It draws these opaque outlines and the live paths inside **one** `saveLayerAlpha(..., 85)` layer, producing approximately one-third opacity even over repeated highlights. Pen and shapes remain above that layer. Color groups retain last-occurrence ordering, with the live color group on top.
+The interactive renderer caches finished outlines and groups them by color. Marker tiles hold these opaque fills; the highlighter View draws the marker tiles and the live paths inside **one** `saveLayerAlpha(..., 85)` layer, producing approximately one-third opacity even over repeated highlights. Pen and shapes remain above that layer. Color groups follow scene-wide last-occurrence ordering (the most recently used color on top); while a live stroke is drawn, existing strokes of its color keep their place until pen-up.
 
 Only the highlighter View invalidates on live moves, once per animation frame. Android can reuse the background/PDF and finished pen/shape display lists. Document, camera, selection, and tool changes refresh the relevant editor layers normally.
 
@@ -61,7 +75,7 @@ Shape preview contains two points: start and current end. Release commits it onl
 - Grid: rectangle with `rows + 1` horizontal and `cols + 1` vertical lines; UI limits subdivisions to `1..30`.
 - Ellipse/circle: native oval drawing; hit-test geometry approximates it with 64 segments.
 
-`hitItem` first excludes locked PDFs and rejects points outside expanded bounds. It then tests distance to stroke samples or shape segments with tolerance `radius + width * maxScale / 2`. It tests line geometry, not the empty interior of a rectangle. Pen hit testing uses sample polylines rather than the exact pressure mesh.
+Eraser, tap and lasso selection first query the spatial index for items near the gesture, so they do not scan the whole note. An eraser move that hits nothing leaves the scene untouched. `hitItem` first excludes locked PDFs and rejects points outside expanded bounds. It then tests distance to stroke samples or shape segments with tolerance `radius + width * maxScale / 2`. It tests line geometry, not the empty interior of a rectangle. Pen hit testing uses sample polylines rather than the exact pressure mesh.
 
 The eraser samples the swept segment between successive events with radius `14 / zoom`, at roughly half-radius spacing, capped at 1,000 steps. Any hit removes the **whole item**, not a portion of a stroke. Preview changes are committed as one undo operation at release. PDFs remain intact.
 
@@ -93,9 +107,9 @@ Single-finger pans use Android `VelocityTracker` and `OverScroller` for platform
 
 `fit()` frames document bounds with margin, using zoom `0.08..2`; an empty scene uses an 800×700 fallback. PDF page navigation frames that page with zoom `0.08..4`. Manual pinch permits `0.08..8`.
 
-The canvas background is `#FAFAF6`. Dots are spaced 24 world units; spacing doubles until at least 12 screen-dp apart. Dot radius is `1 / zoom`, keeping a stable apparent size. The grid does not snap strokes or shapes.
+The canvas background is `#FAFAF6`. Dots are spaced 24 world units; spacing doubles until at least 12 screen-dp apart. Dot radius is `1 / zoom`, keeping a stable apparent size; all dots are submitted in one `drawPoints` call. The grid does not snap strokes or shapes.
 
-Paint order is paper → dots → visible PDF pages → highlighter layer → pen/shapes → temporary shape/lasso/selection affordances, with live native pen ink in the overlay. PDFs and highlights occupy semantic layers regardless of when they were added. A shared world-space spatial grid (512-unit cells) queries visible bounds once for all three completed-content layers. The index rebuilds when the immutable item list changes; pan/zoom queries reuse it, and unchanged viewports reuse the split scene lists. Candidates are deduplicated and sorted back into document order. Items spanning more than 64 cells use an overflow list; viewports spanning more than 4,096 cells fall back to linear culling to bound query work. Editing still rebuilds the index in proportion to note size, and extremely zoomed-out or overlapping scenes still require drawing all visible objects. Hit testing and selection retain their existing geometry rules.
+Paint order is paper → dots → visible PDF pages → highlighter layer (marker tiles, dragged markers, live marker) → pen/shapes/text tiles → dragged selection → temporary shape/lasso/selection affordances, with live native pen ink in the overlay. PDFs and highlights occupy semantic layers regardless of when they were added. A world-space spatial grid (512-unit cells) answers rectangle queries for tiles, gaps, the eraser and selection. Appends and in-place replacements (moving or recoloring a selection) update only the changed items; other edits rebuild it. Candidates are deduplicated with a generation-marked array and sorted back into document order. Items spanning more than 64 cells use an overflow list; queries spanning more than 4,096 cells fall back to linear culling. Hit testing and selection retain their existing geometry rules.
 
 ## Undo and failure boundaries
 

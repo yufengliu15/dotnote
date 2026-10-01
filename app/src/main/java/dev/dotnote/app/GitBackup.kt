@@ -96,6 +96,9 @@ fun managedVaultPath(path: String): Boolean =
                 !path.startsWith("attachments/") &&
                 (path.endsWith(".dotnote") || path.endsWith("/.folder.json"))))
 
+private const val INLINE_FILE_LIMIT = 4L * 1024 * 1024
+private const val INLINE_TOTAL_LIMIT = 24L * 1024 * 1024
+
 class GitBackup(
     private val context: Context,
     private val apiFactory: (String) -> GitHub = { GitHub(it) },
@@ -174,9 +177,10 @@ class GitBackup(
                 val staging = File(context.cacheDir, "upload-${newId()}").apply { mkdirs() }
                 try {
                     var revision = 0L
+                    // Unchanged notes are not re-parsed, and the snapshot hard-links files.
+                    val vault = VaultFiles(root, scanCache(context, root))
                     val files =
                         VaultLocks.forRoot(root).withLock {
-                            val vault = VaultFiles(root)
                             vault.read()
                             revision = catalog.config(id).optLong("revision")
                             vault.snapshot(staging)
@@ -207,22 +211,41 @@ class GitBackup(
                         head = response.getJSONObject("commit").getString("sha")
                         catalog.update(id) { it.put("base", head) }
                     }
-                    val (treeSha, remote) = api.tree(repo, head!!)
+                    // A commit's tree never changes: reuse the listing saved by the last backup.
+                    val (treeSha, remote) = loadRemote(id, head!!) ?: api.tree(repo, head!!)
                     val remoteMap = remote.associateBy { it.path }
+                    val nextRemote = LinkedHashMap(remoteMap)
                     val changes = JSONArray()
+                    // Text files travel inside the tree request itself, so a backup needs a fixed
+                    // handful of requests instead of one upload per changed note.
+                    var inline = 0L
                     files.forEach { (path, file) ->
-                        if (digest(file, true) != remoteMap[path]?.sha)
-                            changes.put(
-                                JSONObject()
-                                    .put("path", path)
-                                    .put("mode", "100644")
-                                    .put("type", "blob")
-                                    .put("sha", api.upload(repo, file))
-                            )
+                        val sha = vault.gitSha(path, file)
+                        if (sha == remoteMap[path]?.sha) return@forEach
+                        nextRemote[path] = GitEntry(path, sha, file.length())
+                        val entry =
+                            JSONObject().put("path", path).put("mode", "100644").put("type", "blob")
+                        val size = file.length()
+                        if (
+                            !path.startsWith("attachments/") &&
+                                size <= INLINE_FILE_LIMIT &&
+                                inline + size <= INLINE_TOTAL_LIMIT
+                        ) {
+                            val bytes = file.readBytes()
+                            val text = bytes.toString(Charsets.UTF_8)
+                            if (text.toByteArray(Charsets.UTF_8).contentEquals(bytes)) {
+                                inline += size
+                                changes.put(entry.put("content", text))
+                                return@forEach
+                            }
+                        }
+                        changes.put(entry.put("sha", api.upload(repo, file)))
                     }
+                    VaultLocks.forRoot(root).withLock { vault.saveCache() }
                     remote
                         .filter { managedVaultPath(it.path) && it.path !in files }
                         .forEach {
+                            nextRemote.remove(it.path)
                             changes.put(
                                 JSONObject()
                                     .put("path", it.path)
@@ -267,7 +290,8 @@ class GitBackup(
                             if (e.status == 422) throw RemoteChanged() else throw e
                         }
                         head = commit
-                    }
+                        saveRemote(id, commit, tree, nextRemote.values)
+                    } else saveRemote(id, head!!, treeSha, remote)
                     catalog.update(id) {
                         it.put("base", head)
                             .put("backedRevision", revision)
@@ -286,6 +310,37 @@ class GitBackup(
                 }
             }
         }
+
+    private fun remoteFile(id: String) = File(context.noBackupFilesDir, "vault-remote/$id.json")
+
+    private fun loadRemote(id: String, commit: String): Pair<String, List<GitEntry>>? =
+        runCatching {
+                val o = JSONObject(remoteFile(id).readText())
+                if (o.getString("commit") != commit) return@runCatching null
+                val a = o.getJSONArray("entries")
+                o.getString("tree") to
+                    List(a.length()) {
+                        val e = a.getJSONArray(it)
+                        GitEntry(e.getString(0), e.getString(1), e.getLong(2))
+                    }
+            }
+            .getOrNull()
+
+    private fun saveRemote(id: String, commit: String, tree: String, entries: Collection<GitEntry>) {
+        runCatching {
+            atomicText(
+                remoteFile(id),
+                JSONObject()
+                    .put("commit", commit)
+                    .put("tree", tree)
+                    .put(
+                        "entries",
+                        JSONArray(entries.map { JSONArray().put(it.path).put(it.sha).put(it.size) }),
+                    )
+                    .toString(),
+            )
+        }
+    }
 
     suspend fun restore(name: String): VaultInfo =
         withContext(Dispatchers.IO) {
@@ -313,7 +368,23 @@ class GitBackup(
             }
             val stage = File(catalog.directory, ".restore-${newId()}").apply { mkdirs() }
             try {
-                managed.forEach { api.download(repo.name, it, File(stage, it.path)) }
+                // Downloads are independent and verified by SHA; fetch a few at a time.
+                val pool = java.util.concurrent.Executors.newFixedThreadPool(minOf(6, maxOf(1, managed.size)))
+                try {
+                    managed
+                        .map { entry ->
+                            pool.submit { api.download(repo.name, entry, File(stage, entry.path)) }
+                        }
+                        .forEach {
+                            try {
+                                it.get()
+                            } catch (e: java.util.concurrent.ExecutionException) {
+                                throw e.cause ?: e
+                            }
+                        }
+                } finally {
+                    pool.shutdownNow()
+                }
                 val vault = catalog.publish(stage)
                 catalog.update(vault.localId) {
                     it.put("repo", repo.name)

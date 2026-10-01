@@ -143,14 +143,16 @@ class AppState(application: Application) : AndroidViewModel(application) {
     )
 
     private val queue = Channel<Save>(Channel.UNLIMITED)
+    // The scene last written per note; an identical immutable Document needs no write.
+    private val lastSaved = HashMap<Pair<Store, String>, Document>()
     private val openings = Channel<Pair<Store, String>>(Channel.UNLIMITED)
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
             for ((storage, id) in openings) {
                 runCatching {
-                    storage.mutex.withLock {
-                        storage.dao.note(id)?.let { latest ->
+                    storage.dao.summary(id)?.let { latest ->
+                        storage.mutex.withLock {
                             RecentNotes(getApplication())
                                 .opened(storage.vaultId, latest, storage.dao.allFolders())
                         }
@@ -197,28 +199,42 @@ class AppState(application: Application) : AndroidViewModel(application) {
                 }
         }
         viewModelScope.launch {
-            for (save in queue) {
-                val ok =
-                    try {
-                        withContext(Dispatchers.IO) {
-                            save.storage.dao.save(
-                                save.id,
-                                DocumentCodec.encode(save.document),
-                                System.currentTimeMillis(),
+            for (head in queue) {
+                // Only the newest scene of each note needs writing. Saves queued while a large
+                // note was being written collapse into one write instead of one per stroke.
+                val batch = mutableListOf(head)
+                while (true) batch.add(queue.tryReceive().getOrNull() ?: break)
+                val latest = LinkedHashMap<Pair<Store, String>, Save>()
+                batch.forEach { latest[it.storage to it.id] = it }
+                for ((key, save) in latest) {
+                    val ok =
+                        try {
+                            if (lastSaved[key] !== save.document) {
+                                save.storage.dao.saveDocument(
+                                    save.id,
+                                    save.document,
+                                    System.currentTimeMillis(),
+                                )
+                                if (store === save.storage && note?.id == save.id)
+                                    lastSaved[key] = save.document
+                                else lastSaved.remove(key)
+                            }
+                            if (
+                                store === save.storage &&
+                                    note?.id == save.id &&
+                                    save.sequence == saveSequence
                             )
+                                saved = true
+                            true
+                        } catch (e: Exception) {
+                            if (e is CancellationException) throw e
+                            message = "Save failed: ${e.message}. Tap the save indicator to retry."
+                            false
                         }
-                        if (
-                            store === save.storage &&
-                                note?.id == save.id &&
-                                save.sequence == saveSequence
-                        )
-                            saved = true
-                        true
-                    } catch (e: Exception) {
-                        message = "Save failed: ${e.message}. Tap the save indicator to retry."
-                        false
+                    batch.forEach {
+                        if (it.storage === save.storage && it.id == save.id) it.done?.complete(ok)
                     }
-                save.done?.complete(ok)
+                }
             }
         }
     }
@@ -382,7 +398,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
     fun setTemplate(enabled: Boolean) = runAction {
         if (!flush()) return@runAction
         val current = note ?: return@runAction
-        val latest = store.dao.note(current.id) ?: return@runAction
+        val latest = store.dao.summary(current.id) ?: return@runAction
         val updated = latest.copy(isTemplate = enabled, modified = System.currentTimeMillis())
         store.dao.put(updated)
         note = updated
@@ -482,6 +498,8 @@ class AppState(application: Application) : AndroidViewModel(application) {
         textEdit = null
         folderId = value.folderId
         document = decoded
+        lastSaved.clear()
+        lastSaved[store to value.id] = decoded
         history = History()
         selection = emptySet()
         revision++
@@ -559,12 +577,20 @@ class AppState(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    private var cameraAt = 0L
+
     fun camera(camera: Camera) {
         document = document.copy(camera = camera)
-        cameraJob?.cancel()
+        // One pending save per pan, not a new coroutine per frame.
+        cameraAt = android.os.SystemClock.uptimeMillis()
+        if (cameraJob?.isActive == true) return
         cameraJob =
             viewModelScope.launch {
-                delay(350)
+                while (true) {
+                    val wait = cameraAt + 350 - android.os.SystemClock.uptimeMillis()
+                    if (wait <= 0) break
+                    delay(wait)
+                }
                 save()
             }
     }

@@ -184,7 +184,16 @@ class VaultPipelineTest {
                     for (i in 0 until a.length()) {
                         val item = a.getJSONObject(i)
                         val name = item.getString("path")
-                        if (item.isNull("sha")) map.remove(name)
+                        if (item.has("content")) {
+                            // GitHub creates the blob from inline UTF-8 content.
+                            val data = item.getString("content").toByteArray()
+                            val file = File.createTempFile("blob", null)
+                            file.writeBytes(data)
+                            val sha = digest(file, true)
+                            file.delete()
+                            bytes[sha] = data
+                            map[name] = GitEntry(name, sha, data.size.toLong())
+                        } else if (item.isNull("sha")) map.remove(name)
                         else {
                             val sha = item.getString("sha")
                             map[name] = GitEntry(name, sha, bytes.getValue(sha).size.toLong())

@@ -6,7 +6,9 @@
 
 The vault directory is the source of truth. [`Store`](../app/src/main/java/dev/dotnote/app/Store.kt) maintains a Room index for reactive lists and document queries. Its `dao` is a [`FileLibraryDao`](../app/src/main/java/dev/dotnote/app/FileLibraryDao.kt) wrapper, not the raw database DAO.
 
-Room schema 2 (with non-destructive 1→2 migration) contains `folders(id PRIMARY KEY, parentId?, name)` and `notes(id PRIMARY KEY, folderId?, title, modified, document, isTemplate DEFAULT 0)`, with an index on `notes.folderId`. There are no SQL foreign-key constraints; application validation protects folder relationships. Folder flow sorts names case-insensitively. Note-summary flow selects metadata only and sorts by modification time descending. Opening a note loads the document string separately.
+Room schema 2 (with non-destructive 1→2 migration) contains `folders(id PRIMARY KEY, parentId?, name)` and `notes(id PRIMARY KEY, folderId?, title, modified, document, isTemplate DEFAULT 0)`, with an index on `notes.folderId`. There are no SQL foreign-key constraints; application validation protects folder relationships. Folder flow sorts names case-insensitively. Note-summary flow selects metadata only and sorts by modification time descending.
+
+Since 0.10.0 the index stores **metadata only**: the `document` column of every row is empty (no schema change). `FileLibraryDao.note(id)` reads the document from the note's file under the vault lock. Previously the index held every document, and Android cannot read a row larger than its 2 MB `CursorWindow`: a note of roughly 2,000 handwritten strokes could be saved once but then neither re-saved nor reopened. `allNotes()` returns metadata with an empty `document`; a note passed back to a write with an empty document keeps its stored content. Existing indexes are rebuilt this way on the first start.
 
 ```mermaid
 sequenceDiagram
@@ -15,15 +17,16 @@ sequenceDiagram
     participant F as VaultFiles
     participant DB as Room index
     participant C as VaultCatalog
-    UI->>DAO: save captured note/document
+    UI->>DAO: saveDocument(latest scene of this note)
+    DAO->>DAO: encode (reusing unchanged items' JSON)
     DAO->>DAO: await ready; acquire root mutex
-    DAO->>F: write journal, apply file changes, remove journal
-    DAO->>DB: upsert latest note
+    DAO->>F: replace the note file atomically (journal only if the path changes)
+    DAO->>DB: update modified time
     DAO->>C: increment backup revision and schedule
     DAO-->>UI: success / failure
 ```
 
-`updateNote` re-reads the current record inside the lock before applying a content/title/folder change. This prevents an older save request from restoring an old title or folder. Identical document saves are no-ops and keep `modified` unchanged. Rename/move updates `modified`; renaming/moving a folder rewrites paths without individually changing every note's timestamp.
+The editor's save queue writes only the newest scene of each note: saves queued while a large note was being written collapse into one write. A scene that is the same immutable `Document` instance as the last one written is not written again, so identical saves keep `modified` unchanged and do not schedule a backup. `DocumentCodec.encode` writes exactly the bytes Android's org.json produced (`CodecCompatibilityTest`) and caches each immutable item's JSON on the item, so a save after one stroke formats only that stroke. Documents the editor encoded are written without re-parsing; other writes (`put`, `save`, `replace`) still validate the document. `updateNote` re-reads the current metadata inside the lock before applying a title/folder change. This prevents an older save request from restoring an old title or folder. Rename/move updates `modified`; renaming/moving a folder rewrites paths without individually changing every note's timestamp.
 
 The file operation precedes the index mutation. They are not a single distributed transaction. If a crash occurs between them, reopening/reloading rebuilds the index from files. If a write succeeds but updating backup configuration fails, the UI can report failure even though the file exists; inspect all layers before assuming the document is absent.
 
@@ -43,14 +46,16 @@ The file operation precedes the index mutation. They are not a single distribute
 This illustrates the journal structure; each write value is a string containing a complete file body, not a nested note object.
 
 1. Construct all writes and deletes. A path being written is removed from the delete list.
+A single in-place note replacement is already atomic through `AtomicFile` and skips the journal. Operations that write one path and delete another (rename, move, delete, folder changes) use it:
+
 2. Atomically persist the journal.
 3. Atomically write each target, then delete old files.
-4. Prune empty directories, preserving the root and directories named `attachments` / `.dotnote`.
+4. If anything was deleted, prune empty directories, preserving the root and directories named `attachments` / `.dotnote`.
 5. Delete the journal with `AtomicFile.delete()`.
 
 `read()` and `snapshot()` recover an existing journal first. Recovery replays the same operations and only removes the journal after success. It also recognizes the journal's AtomicFile backup. Paths are checked for safe relative syntax and canonical containment before application. This completes an interrupted operation; it is not a rollback to the old library or an undo history.
 
-A folder rename/move calls `replace`: validate parent relationships/cycles, calculate every folder path, write folder markers and all notes, delete obsolete managed paths. Its cost scales with the whole library, not just the selected subtree. In-memory path maps are maintained by `VaultFiles`; use an initialized instance and the root lock. After a failed transaction, reopen/reload and replay rather than continuing arbitrary external edits against stale maps.
+A folder rename/move calls `replace`: validate parent relationships/cycles, calculate every folder path, write folder markers, rewrite notes whose path or metadata changed, delete obsolete managed paths. Notes outside the moved subtree are not rewritten. In-memory path maps are maintained by `VaultFiles`; use an initialized instance and the root lock. After a failed transaction, reopen/reload and replay rather than continuing arbitrary external edits against stale maps.
 
 ## Deletion and retained data
 
@@ -62,7 +67,9 @@ Attachments are not garbage-collected after deletion. Local trash and unreferenc
 
 ## Initialization and legacy migration
 
-For production, each vault index is named `vault-<local-id>.db`. `Store.ready` runs initialization on IO under the root mutex and rebuilds Room using batch upserts in one `withTransaction` after reading the files. The scanner parses each note once and validates its already parsed document without constructing every renderable item. All previous format, coordinate, ID, attachment and file-containment checks still apply. Debug builds log note counts and scan/index timing under `DotnoteStartup`, without note names/content or credentials. No timestamp-only cache bypasses validation. `Store.reload()` explicitly repeats the file scan/index rebuild. Merely having a newer database is never permission to overwrite canonical note files.
+For production, each vault index is named `vault-<local-id>.db`. `Store.ready` runs initialization on IO under the root mutex and rebuilds Room (metadata only) using batch upserts in one `withTransaction` after reading the files. The scanner validates each note with a streaming parser, without building an object tree or renderable items. All format, coordinate, ID, attachment and file-containment checks still apply. Debug builds log note counts and scan/index timing under `DotnoteStartup`, without note names/content or credentials. `Store.reload()` explicitly repeats the file scan/index rebuild. Merely having a newer database is never permission to overwrite canonical note files.
+
+**Scan cache.** A validated note's metadata (ID, title, modified time, template flag, attachments) is remembered in app-private `no_backup/vault-scan/<local-id>.json`, outside the vault, keyed by the file's inode, size and nanosecond modification time. A note whose stamp is unchanged is not read again on startup or before a backup; any rewrite (including atomic replacement, external copies and restores) produces a new stamp and a full validation. Attachments named by cached notes are still checked for existence and containment on every scan, and the directory walk, folder markers, settings and manifest are always read. The cache also remembers Git blob SHA-1s by the same stamp. Losing or corrupting it only costs a full scan; it can never supply metadata for different content. `GitBackup` uses the same cache under the same root lock.
 
 The first default vault may be marked `legacyTarget` in catalog preferences. If it lacks `.dotnote/migrated`, initialization:
 
@@ -90,7 +97,9 @@ All exported note/PDF contents are unencrypted. Credentials never belong in thes
 
 ### Managed snapshots
 
-`Store.snapshot(destination)` waits for readiness and holds the root mutex while `VaultFiles.snapshot` replays any journal and copies known paths to a staging directory. It includes only assets referenced by active documents. Network or external-provider I/O then consumes the staged files after releasing the lock. This gives a coherent managed snapshot without blocking writing throughout an upload.
+Snapshots hard-link each managed file into the staging directory when the filesystem allows it and copy otherwise. Every vault write replaces files by rename, so a link keeps the snapshot's content while costing no copy. Referenced attachments come from validated metadata instead of decoding every note.
+
+`Store.snapshot(destination)` waits for readiness and holds the root mutex while `VaultFiles.snapshot` replays any journal and links or copies known paths to a staging directory. It includes only assets referenced by active documents. Network or external-provider I/O then consumes the staged files after releasing the lock. This gives a coherent managed snapshot without blocking writing throughout an upload.
 
 Copying files one by one directly through the documents provider has no whole-vault snapshot lock. For a consistent transfer while edits might occur, prefer the app's export action. The provider can expose unreferenced attachments, whereas managed snapshots exclude them.
 
