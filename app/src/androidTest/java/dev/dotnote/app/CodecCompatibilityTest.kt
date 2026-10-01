@@ -64,13 +64,16 @@ class CodecCompatibilityTest {
             listOf(
                 ink,
                 ink.copy(id = newId(), transform = Transform(1.5f, 1.5f, -3.25f, 1e-7f)),
-                Item(kind = "HIGHLIGHTER", color = Color.YELLOW, width = 14f, points = List(20) { Pt(it * 3.3f, -0f) }),
+                Item(kind = "HIGHLIGHTER", color = Color.YELLOW, width = 14f, points = List(20) { Pt(it * 3.3f, 0f) }),
                 Item(kind = "GRID", points = listOf(Pt(1f, 2f), Pt(300.125f, 4e10f)), rows = 7, cols = 2),
                 Item(kind = "PDF", asset = "0123abcd-ef.pdf", page = 3, image = true, points = listOf(Pt(0f, 0f), Pt(800f, 600f))),
                 textItem("Quote \" slash / back \\ tab\t newline\n ctrl \u0001 ünï 😀", 18.5f, Color.RED, Pt(10f, 20f), null),
             )
         val doc = Document(items, Camera(-12.5f, 1e-3f, 0.333f), dots = false)
         assertEquals(legacy(doc), DocumentCodec.encode(doc))
+        // Like org.json, negative zero is written as 0.
+        val negativeZero = Document(listOf(Item(kind = "LINE", points = listOf(Pt(-0f, 1f), Pt(2f, -0f)))))
+        assertEquals(legacy(negativeZero), DocumentCodec.encode(negativeZero))
         assertEquals(doc, DocumentCodec.decode(DocumentCodec.encode(doc)))
         assertEquals(doc, DocumentCodec.decode(legacy(doc)))
         // Files written by org.json after a parse/serialize cycle are read identically.

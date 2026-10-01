@@ -89,8 +89,17 @@ internal class JsonCursor(private val s: String) {
             if (c < ' ') fail("Control character in string")
             pos++
         }
-        val out = StringBuilder(pos - start + 16).append(s, start, pos)
+        val out = StringBuilder(pos - start + 64).append(s, start, pos)
         while (pos < s.length) {
+            // Copy unescaped runs in bulk (Base64 ink is full of escaped '/').
+            val run = pos
+            while (pos < s.length) {
+                val c = s[pos]
+                if (c == '"' || c == '\\' || c < ' ') break
+                pos++
+            }
+            if (pos > run) out.append(s, run, pos)
+            if (pos >= s.length) break
             val c = s[pos++]
             when {
                 c == '"' -> return out.toString()
@@ -118,6 +127,68 @@ internal class JsonCursor(private val s: String) {
             }
         }
         fail("Unterminated string")
+    }
+
+    /** Skips a string without building it; escapes are still checked. */
+    fun skipString() {
+        if (peek() != '"') fail("Expected a string")
+        pos++
+        while (pos < s.length) {
+            val c = s[pos++]
+            when {
+                c == '"' -> return
+                c == '\\' -> {
+                    if (pos >= s.length) fail()
+                    when (s[pos++]) {
+                        '"',
+                        '\\',
+                        '/',
+                        'b',
+                        'f',
+                        'n',
+                        'r',
+                        't' -> {}
+                        'u' -> {
+                            if (pos + 4 > s.length) fail()
+                            for (k in pos until pos + 4) if (Character.digit(s[k], 16) < 0) fail()
+                            pos += 4
+                        }
+                        else -> fail("Invalid escape")
+                    }
+                }
+                c < ' ' -> fail("Control character in string")
+            }
+        }
+        fail("Unterminated string")
+    }
+
+    /** Skips a number using JSON's grammar without converting it. */
+    private fun skipNumber() {
+        val start = pos
+        if (pos < s.length && s[pos] == '-') pos++
+        var digits = false
+        while (pos < s.length && s[pos] in '0'..'9') {
+            pos++
+            digits = true
+        }
+        if (pos < s.length && s[pos] == '.') {
+            pos++
+            while (pos < s.length && s[pos] in '0'..'9') {
+                pos++
+                digits = true
+            }
+        }
+        if (!digits) {
+            pos = start
+            fail("Expected a number")
+        }
+        if (pos < s.length && (s[pos] == 'e' || s[pos] == 'E')) {
+            pos++
+            if (pos < s.length && (s[pos] == '+' || s[pos] == '-')) pos++
+            val exponent = pos
+            while (pos < s.length && s[pos] in '0'..'9') pos++
+            if (pos == exponent) fail("Expected a number")
+        }
     }
 
     fun boolean(): Boolean {
@@ -248,11 +319,11 @@ internal class JsonCursor(private val s: String) {
                     skip()
                 }
             }
-            '"' -> string()
+            '"' -> skipString()
             't',
             'f' -> boolean()
             'n' -> if (!isNull()) fail()
-            else -> number()
+            else -> skipNumber()
         }
     }
 

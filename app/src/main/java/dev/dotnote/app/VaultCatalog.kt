@@ -114,14 +114,15 @@ class VaultCatalog(val context: Context) {
     }
 
     fun publish(staging: File, name: String? = null): VaultInfo {
-        val files = VaultFiles(staging)
+        val id = newId()
+        // Validation records survive the rename, so the first open skips re-validating.
+        val files = VaultFiles(staging, scanCache(context, root(id)))
         files.read()
         val meta = JSONObject(files.manifest.readText())
         if (name != null) {
             meta.put("name", name.take(120))
             atomicText(files.manifest, meta.toString(2))
         }
-        val id = newId()
         require(staging.renameTo(root(id))) { "Could not finish importing vault" }
         return VaultInfo(id, meta.getString("name"))
     }

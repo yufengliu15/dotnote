@@ -499,14 +499,26 @@ object DocumentCodec {
                     var count = 0
                     json.beginArray()
                     while (json.hasNext(count == 0)) {
-                        val point = floats(json, 2)
-                        list?.add(Pt(point[0], point[1]))
+                        // [x, y, ...]: two finite numbers; extra elements are ignored.
+                        json.beginArray()
+                        if (!json.hasNext(true)) json.fail("Missing coordinates")
+                        val x = json.finite()
+                        if (!json.hasNext(false)) json.fail("Missing coordinates")
+                        val y = json.finite()
+                        while (json.hasNext(false)) json.finite()
+                        list?.add(Pt(x, y))
                         count++
                     }
                     f.points = list
                     f.pointCount = count
                 }
-                "ink" -> f.ink = if (json.isNull()) json.fail("Invalid ink") else json.string()
+                "ink" ->
+                    if (json.isNull()) json.fail("Invalid ink")
+                    else if (materialize) f.ink = json.string()
+                    else {
+                        json.skipString()
+                        f.ink = ""
+                    }
                 "transform" -> f.transform = floats(json, 4)
                 "rows" -> f.rows = json.int()
                 "cols" -> f.cols = json.int()

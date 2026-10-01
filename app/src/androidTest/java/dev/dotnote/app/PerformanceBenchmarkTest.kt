@@ -181,8 +181,9 @@ class PerformanceBenchmarkTest {
                 }
                 block(Editor(scenario, state, view!!, window!!, id))
             } finally {
+                // 0.9.x cannot close a note whose save fails (rows over 2 MB); clean up anyway.
                 instrumentation.runOnMainSync { state.closeNote() }
-                await { state.note == null && !state.busy }
+                runCatching { await(30_000) { state.note == null && !state.busy } }
                 runBlocking { state.store.dao.deleteNote(id) }
             }
         }
@@ -481,21 +482,28 @@ class PerformanceBenchmarkTest {
     }
 
     @Test
-    fun openLargeNote() {
-        withDenseEditor(denseScene(3000)) { e ->
+    fun openMediumNote() = openNote(1200, "note.open.1200")
+
+    @Test
+    fun openLargeNote() = openNote(3000, "note.open.3000")
+
+    private fun openNote(strokes: Int, name: String) {
+        withDenseEditor(denseScene(strokes)) { e ->
             val times = mutableListOf<Double>()
             var opened = 0
             repeat(3) {
                 instrumentation.runOnMainSync { e.state.closeNote() }
-                await { e.state.note == null && !e.state.busy }
+                val closed =
+                    runCatching { await(60_000) { e.state.note == null && !e.state.busy } }
+                        .isSuccess
                 val start = System.nanoTime()
                 instrumentation.runOnMainSync { e.state.open(e.noteId) }
-                await { !e.state.busy }
+                runCatching { await(60_000) { !e.state.busy && e.state.note != null } }
                 times.add(ms(start))
-                if (e.state.note?.id == e.noteId) opened++
+                if (closed && e.state.note?.id == e.noteId) opened++
             }
-            report("note.open.3000", times)
-            val line = "BENCH note.open.3000 opened=$opened of 3 message=${e.state.message}"
+            report(name, times)
+            val line = "BENCH $name opened=$opened of 3 message=${e.state.message}"
             Log.i("DotnoteBench", line)
             instrumentation.sendStatus(0, Bundle().apply { putString("stream", line + "\n") })
             if (opened == 0) {
@@ -559,9 +567,9 @@ class PerformanceBenchmarkTest {
         private val trees = mutableMapOf("initial" to emptyMap<String, GitEntry>())
         private val commits = mutableMapOf("initial" to "initial")
 
-        @Synchronized
         private fun call() {
-            requests++
+            synchronized(this) { requests++ }
+            // Network latency overlaps for concurrent requests, as it does against GitHub.
             if (delayMs > 0) Thread.sleep(delayMs)
         }
 

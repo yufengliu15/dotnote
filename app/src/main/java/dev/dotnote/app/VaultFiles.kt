@@ -164,8 +164,9 @@ class VaultFiles(val root: File, private val cacheFile: File? = null) {
             ?.let { file ->
                 runCatching {
                     val o = JSONObject(file.readText())
-                    if (o.optInt("version") != 1 || o.optString("root") != root.absolutePath)
-                        return@runCatching
+                    // Entries are keyed by relative path and inode, so a vault validated in
+                    // staging and then renamed into place keeps its records.
+                    if (o.optInt("version") != 1) return@runCatching
                     fun stamp(a: JSONArray) = FileStamp(a.getLong(0), a.getLong(1), a.getLong(2))
                     o.optJSONObject("notes")?.let { n ->
                         n.keys().forEach { path ->
