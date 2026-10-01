@@ -1,3 +1,21 @@
+# 0.9.1 text reflow and local startup validation
+
+Validated October 1, 2026 with the cached JDK 20 / Android SDK 36 toolchain and the existing disposable Android 16 / API 36 ARM64 tablet emulator (1280×800, skiagl). App version **0.9.1 / code 15**.
+
+- Debug app and instrumentation APK assembly, compilation, all **38 JVM tests**, and lint passed. Lint: **0 errors, 39 warnings**. `git diff --check` passed.
+- **46 focused Android tests passed** on the final APK in separate instrumentation invocations: StartupLoadingTest (2), TextTemplateTest (6), NativePipelineTest (2), VaultPipelineTest (4), VaultLifecycleTest (3), GesturePipelineTest (2), EditorUpdateTest (3), FlingNavigationTest (3), HighlighterPerformanceTest (2), VectorPerformanceTest (2), InkStartupTest (1), WidgetPipelineTest (4), NotesRoleTest (5), DocumentImportPipelineTest (5), GitHubSignInLifecycleTest (2). The two calendar UI tests were not rerun; all calendar JVM rules passed.
+- The text UI regression widens soft-wrapped “like this” from two lines to one without changing font size or existing visual scale, fits the rectangle height to the resulting lines, retains wrapping width through editing/font changes, saves/reopens, and checks undo/redo. Scale grows and shrinks proportionally while preserving text and wrapping; explicit newlines remain paragraph breaks. Existing text rendering/PDF, template, attachment, backup, migration, drawing and image/deck tests also pass. No document-format migration or app-data clearing was needed.
+- Startup waits for local file validation and Room index rebuilding, not a repository network exchange. A held local-vault mutex test verifies “Opening local vault…” and no empty library flashing behind the overlay; the library appears after initialization. Backup scheduling now runs off the UI thread after local readiness. Files remain authoritative, attachment/format validation remains complete, and stale Room entries are repaired from files.
+- A generated **160-note / 32,000-object** fixture measured Store reopening at **1,226.324 ms** on the installed 0.9.0 baseline. The first updated run measured **844.522 ms**; the final 0.9.1 run measured **863.281 ms** (about **30% less time**). Final startup phases were **825.297 ms scan / 36.787 ms index**. These are individual paired emulator measurements, not physical-tablet latency guarantees. The scanner avoids a second JSON parse and allocating every renderable scene; the derived index uses batch inserts within one transaction. Debug timing logs contain counts/timings, not note content or credentials.
+
+Release source: focused branch `codex/text-reflow-startup-0.9.1`. Preexisting edits in `TODO.md` are preserved and excluded from the implementation commits. Packaging uses `scripts/package-release.py --allow-dirty`: this is explicitly a **development snapshot**, with its exact source commit, dirty paths and source/APK hashes recorded in `dist/release-0.9.1.json`, not a clean tagged release. No tag or push is claimed. Artifacts are `dist/dotnote-0.9.1.apk`, `dist/dotnote-0.9.1-source.zip`, `dist/SHA256SUMS-0.9.1` and the manifest. The signing certificate is checked against the previous distributable: SHA-256 `825739c9e1b77f0276094938143f07b6a51e636344c076fa90f6caad869d9744`.
+
+Evidence: `/private/tmp/dotnote-0.9.1-final-build.log`, `/private/tmp/dotnote-0.9.1-final-StartupLoadingTest.log`, `/private/tmp/dotnote-0.9.1-final-TextTemplateTest.log`, class-named `/private/tmp/dotnote-0.9.1-final-*.log` regression results, and `DotnoteStartupTest` / `DotnoteStartup` emulator logcat timings. Baseline: `/private/tmp/dotnote-0.9.1-startup-baseline.log`. Visually inspected captures: `dist/preview/text-resize-0.9.1.png` and `dist/preview/text-scale-0.9.1.png`.
+
+Physical-tablet loading, OEM stylus behavior and live GitHub networking remain unverified. Existing notes, source files, signing identity and historical artifacts are retained. Install as an update without uninstalling or clearing data.
+
+---
+
 # 0.9.0 text and template validation
 
 Validated September 30, 2026 with the cached JDK 20 / Android SDK 36 toolchain and the existing disposable Android 16 / API 36 ARM64 tablet emulator (1280×800, skiagl). App version **0.9.0 / code 14**.

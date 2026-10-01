@@ -61,6 +61,11 @@ data class Transform(
         )
 }
 
+enum class SelectionSizing {
+    RESIZE,
+    SCALE,
+}
+
 enum class Tool(val label: String) {
     PEN("Pen"),
     HIGHLIGHTER("Highlighter"),
@@ -272,13 +277,22 @@ object DocumentCodec {
                 }
             }
 
-    fun decode(text: String): Document {
-        val o = JSONObject(text)
+    fun decode(text: String): Document = decode(JSONObject(text))
+
+    internal fun decode(o: JSONObject): Document = read(o, true) {}
+
+    /** Startup checks the same fields without allocating a renderable scene for every note. */
+    internal fun validate(o: JSONObject, onAsset: (String) -> Unit = {}) {
+        read(o, false, onAsset)
+    }
+
+    private fun read(o: JSONObject, materialize: Boolean, onAsset: (String) -> Unit): Document {
         require(o.getInt("version") == 1) { "Unsupported note version" }
         val c = o.getJSONArray("camera")
         val a = o.getJSONArray("items")
+        val ids = HashSet<String>()
         val items =
-            (0 until a.length()).map { n ->
+            (0 until a.length()).mapNotNull { n ->
                 val i = a.getJSONObject(n)
                 val t = i.getJSONArray("transform")
                 val pts = i.getJSONArray("points")
@@ -304,30 +318,44 @@ object DocumentCodec {
                 }
                 require(!image || (kind == "PDF" && asset != null)) { "Invalid image attachment" }
                 require(width.isFinite() && width in .1f..100f)
-                val transform = Transform(t.finite(0), t.finite(1), t.finite(2), t.finite(3))
-                require(transform.sx > 0 && transform.sy > 0)
+                val sx = t.finite(0)
+                val sy = t.finite(1)
+                val tx = t.finite(2)
+                val ty = t.finite(3)
+                require(sx > 0 && sy > 0)
+                val id = i.getString("id")
+                require(ids.add(id)) { "Duplicate object IDs" }
+                val color = i.getInt("color")
+                val points = if (materialize) ArrayList<Pt>(pts.length()) else null
+                repeat(pts.length()) { index ->
+                    val point = pts.getJSONArray(index)
+                    val x = point.finite(0)
+                    val y = point.finite(1)
+                    points?.add(Pt(x, y))
+                }
+                val ink = if (i.has("ink")) i.getString("ink") else null
+                val rows = i.getInt("rows").coerceIn(1, 30)
+                val cols = i.getInt("cols").coerceIn(1, 30)
+                val page = i.getInt("page").also { require(it >= 0) }
+                asset?.let(onAsset)
+                if (!materialize) return@mapNotNull null
                 Item(
-                    id = i.getString("id"),
+                    id = id,
                     kind = kind,
-                    color = i.getInt("color"),
+                    color = color,
                     width = width,
-                    points =
-                        (0 until pts.length()).map {
-                            val p = pts.getJSONArray(it)
-                            Pt(p.finite(0), p.finite(1))
-                        },
-                    ink = if (i.has("ink")) i.getString("ink") else null,
-                    transform = transform,
-                    rows = i.getInt("rows").coerceIn(1, 30),
-                    cols = i.getInt("cols").coerceIn(1, 30),
+                    points = requireNotNull(points),
+                    ink = ink,
+                    transform = Transform(sx, sy, tx, ty),
+                    rows = rows,
+                    cols = cols,
                     asset = asset,
-                    page = i.getInt("page").also { require(it >= 0) },
+                    page = page,
                     image = image,
                     text = content,
                     fontSize = fontSize,
                 )
             }
-        require(items.map { it.id }.distinct().size == items.size) { "Duplicate object IDs" }
         return Document(
             items,
             Camera(c.finite(0), c.finite(1), c.finite(2).coerceIn(.08f, 8f)),

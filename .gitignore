@@ -15,3 +15,7 @@ dist/SHA256SUMS-0.9.0
 dist/release-0.9.0.json
 dist/preview/text-dialog-0.9.0.png
 dist/preview/template-dialog-0.9.0.png
+dist/SHA256SUMS-0.9.1
+dist/release-0.9.1.json
+dist/preview/text-resize-0.9.1.png
+dist/preview/text-scale-0.9.1.png

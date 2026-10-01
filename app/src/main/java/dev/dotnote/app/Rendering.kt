@@ -296,7 +296,7 @@ class ObjectRenderer(private val vectorHighlights: Boolean = true) {
                             requireNotNull(item.text),
                             item.fontSize,
                             item.color,
-                            Bounds.of(item.points).width.toInt().coerceIn(1, 4096),
+                            Bounds.of(item.points).width.roundToInt().coerceIn(1, 4096),
                         )
                         .also { textLayouts.put(item.id, item to it) }
             canvas.concat(item.transform.matrix())

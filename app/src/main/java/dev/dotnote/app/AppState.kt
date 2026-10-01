@@ -127,6 +127,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
     var fingerDrawing by mutableStateOf(preferences.getBoolean("finger", false))
     var dock by mutableStateOf(preferences.getString("dock", "Top") ?: "Top")
     var selection by mutableStateOf<Set<String>>(emptySet())
+    var selectionSizing by mutableStateOf(SelectionSizing.RESIZE)
     var history = History()
         private set
 
@@ -160,7 +161,16 @@ class AppState(application: Application) : AndroidViewModel(application) {
         runAction {
             loadWriting()
             switching = false
-            catalog.list().forEach { BackupScheduler.schedule(application, it.localId) }
+        }
+        // Reconcile local WorkManager jobs off the UI thread; opening notes never waits for GitHub.
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                store.ready.await()
+                catalog.list().forEach { BackupScheduler.schedule(application, it.localId) }
+            } catch (e: Exception) {
+                if (e is CancellationException) throw e
+                withContext(Dispatchers.Main) { message = "Backup scheduling failed: ${e.message}" }
+            }
         }
         viewModelScope.launch {
             snapshotFlow {

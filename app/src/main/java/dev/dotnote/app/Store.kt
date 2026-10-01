@@ -9,6 +9,8 @@ import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -64,6 +66,10 @@ interface LibraryDao {
     @Upsert suspend fun put(note: Note)
 
     @Upsert suspend fun put(folder: Folder)
+
+    @Upsert suspend fun putNotes(notes: List<Note>)
+
+    @Upsert suspend fun putFolders(folders: List<Folder>)
 
     @Query("DELETE FROM notes WHERE id=:id") suspend fun deleteNote(id: String)
 
@@ -121,12 +127,18 @@ class Store(
             .build()
     private val index = db.dao()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val loading = MutableStateFlow("Opening local vault…")
+    val loadingStatus = loading.asStateFlow()
+    internal var initializationTimings: Pair<Double, Double>? = null
+        private set
+
     val ready =
         scope.async(start = CoroutineStart.LAZY) {
             mutex.withLock {
                 files.create(newId(), if (isAppVault) "My notes" else "Test vault")
                 val migrated = File(root, ".dotnote/migrated")
                 if (isAppVault && catalog.isLegacyTarget(vaultId) && !migrated.exists()) {
+                    loading.value = "Migrating local notes…"
                     // Leave the old DB and PDFs intact. Replay safely if migration was interrupted.
                     val legacy =
                         Room.databaseBuilder(context, LibraryDatabase::class.java, "dotnote.db")
@@ -154,15 +166,32 @@ class Store(
                         legacy.close()
                     }
                 }
+                loading.value = "Reading local notes…"
+                val scanStart = android.os.SystemClock.elapsedRealtimeNanos()
                 val (folders, notes) = files.read()
-                db.withTransaction {
-                    index.clearNotes()
-                    index.clearFolders()
-                    folders.forEach { index.put(it) }
-                    notes.forEach { index.put(it) }
-                }
+                val indexStart = android.os.SystemClock.elapsedRealtimeNanos()
+                loading.value = "Updating note list…"
+                rebuildIndex(folders, notes)
+                val finished = android.os.SystemClock.elapsedRealtimeNanos()
+                initializationTimings =
+                    (indexStart - scanStart) / 1e6 to (finished - indexStart) / 1e6
+                if (BuildConfig.DEBUG)
+                    android.util.Log.i(
+                        "DotnoteStartup",
+                        "Local vault: ${notes.size} notes, scan=${initializationTimings!!.first} ms, index=${initializationTimings!!.second} ms",
+                    )
+                loading.value = "Local notes ready"
             }
         }
+
+    private suspend fun rebuildIndex(folders: List<Folder>, notes: List<Note>) =
+        db.withTransaction {
+            index.clearNotes()
+            index.clearFolders()
+            index.putFolders(folders)
+            index.putNotes(notes)
+        }
+
     val dao: LibraryDao = FileLibraryDao(this, index)
     val assets
         get() = files.assets
@@ -180,12 +209,7 @@ class Store(
             ready.await()
             mutex.withLock {
                 val (folders, notes) = files.read()
-                db.withTransaction {
-                    index.clearNotes()
-                    index.clearFolders()
-                    folders.forEach { index.put(it) }
-                    notes.forEach { index.put(it) }
-                }
+                rebuildIndex(folders, notes)
             }
         }
 
@@ -194,12 +218,7 @@ class Store(
             ready.await()
             mutex.withLock {
                 files.replace(folders, notes)
-                db.withTransaction {
-                    index.clearNotes()
-                    index.clearFolders()
-                    folders.forEach { index.put(it) }
-                    notes.forEach { index.put(it) }
-                }
+                rebuildIndex(folders, notes)
                 changed()
             }
         }

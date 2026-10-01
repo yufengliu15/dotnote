@@ -77,6 +77,55 @@ class DocumentTest {
     }
 
     @Test
+    fun lightweightValidationEnforcesTheSameDocumentChecksAsOpening() {
+        val valid =
+            Document(
+                listOf(
+                    Item(
+                        kind = "PDF",
+                        asset = "abc.pdf",
+                        points = listOf(Pt(0f, 0f), Pt(100f, 100f)),
+                    ),
+                    Item(
+                        kind = "TEXT",
+                        text = "like this",
+                        fontSize = 24f,
+                        points = listOf(Pt(0f, 0f), Pt(180f, 28f)),
+                    ),
+                )
+            )
+        val encoded = DocumentCodec.encode(valid)
+        val assets = mutableListOf<String>()
+        DocumentCodec.validate(org.json.JSONObject(encoded), assets::add)
+        assertEquals(listOf("abc.pdf"), assets)
+        assertEquals(valid, DocumentCodec.decode(encoded))
+        val mutations: List<(org.json.JSONObject) -> Unit> =
+            listOf(
+                { it.put("version", 2) },
+                { it.getJSONArray("camera").put(0, "invalid") },
+                { it.getJSONArray("items").getJSONObject(0).put("kind", "unknown") },
+                { it.getJSONArray("items").getJSONObject(0).put("asset", "../bad.pdf") },
+                { it.getJSONArray("items").getJSONObject(0).put("width", -1) },
+                { it.getJSONArray("items").getJSONObject(0).getJSONArray("transform").put(0, 0) },
+                {
+                    it.getJSONArray("items")
+                        .getJSONObject(0)
+                        .getJSONArray("points")
+                        .getJSONArray(0)
+                        .put(0, "invalid")
+                },
+                { it.getJSONArray("items").getJSONObject(1).put("text", " ") },
+                { it.getJSONArray("items").getJSONObject(1).put("fontSize", 1000) },
+                { it.getJSONArray("items").getJSONObject(1).put("id", valid.items.first().id) },
+            )
+        mutations.forEach { change ->
+            val json = org.json.JSONObject(encoded).also(change)
+            assertTrue(runCatching { DocumentCodec.decode(json.toString()) }.isFailure)
+            assertTrue(runCatching { DocumentCodec.validate(json) }.isFailure)
+        }
+    }
+
+    @Test
     fun zoomPreservesWorldPointUnderFinger() {
         val camera = Camera(-153f, 84f, .65f)
         val focus = Pt(640f, 300f)

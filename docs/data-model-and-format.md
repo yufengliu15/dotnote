@@ -116,7 +116,7 @@ This is an additive version-1 field with default false. Older files remain reada
 
 ## Text and templates (0.9.0)
 
-TEXT items use two local points defining the measured top-left/bottom-right rectangle, plus `text` and `fontSize`. Newlines and Unicode are preserved. Transform scaling changes visual size without rewriting text. Version-1 legacy documents remain readable; optional text size defaults to 24. Older app versions reject the new TEXT kind, so notes containing typed text require 0.9.0 or later.
+TEXT items use two local points defining the wrapping rectangle and measured height, plus `text` and `fontSize`. As of 0.9.1, Resize changes the width and remeasures height while retaining font size/transform; Scale retains points and changes the transform. Editing preserves the width. Explicit newlines remain paragraph breaks. Existing 0.9.0 text corners supply the default width, so no format change/migration is needed. Newlines and Unicode are preserved. Transform scaling changes visual size without rewriting text. Version-1 legacy documents remain readable; optional text size defaults to 24. Older app versions reject the new TEXT kind, so notes containing typed text require 0.9.0 or later.
 
 The outer `.dotnote` object adds `template: true/false`, defaulting to false for old files. It is Note metadata rather than a drawing object or document setting. Vault snapshots, Git backups and legacy ZIP manifests preserve it. Templates are ordinary editable notes. A new instance copies document items, camera and dots, regenerates all item IDs and the note ID, and defaults to `template: false`; immutable attachment references stay shared in the same vault. Room schema 2 adds an `isTemplate INTEGER NOT NULL DEFAULT 0` column through the registered 1→2 migration, preserving existing indexed and legacy notes.
 
@@ -169,6 +169,8 @@ The reader verifies version, six integer colors, finite width in range, and the 
 | Vault scanner | Canonical containment, no linked folders/files in scanned content, valid unique note/folder IDs, valid document JSON, existing referenced attachment, bounded metadata/note sizes |
 
 The codec recognizes every `Tool` enum name, including `ERASER` and `LASSO`, plus the legacy `HAND` name, although normal UI never saves those as drawable items. Item IDs are checked for uniqueness, not with `validId`. The codec does not validate the native `ink` payload, impose an item/sample count limit, require two shape points, check PDF page count, or require an asset specifically for every PDF item. Native decoding/PDF rendering can fail later. Do not describe the format reader as complete validation of arbitrary malicious input.
+
+Startup uses `DocumentCodec.validate(JSONObject)` on the already parsed document; it shares every field/ID/geometry validation with decode but does not allocate Items, points or scene bounds. Referenced assets are still checked by the scanner. Opening a note materializes the scene separately.
 
 Unknown extra JSON fields are generally ignored and are not preserved by re-encoding. Future required formats need an explicit version/migration plan. Changing Ink storage/brush versions also requires old-stroke rendering checks even if the JSON version remains unchanged.
 

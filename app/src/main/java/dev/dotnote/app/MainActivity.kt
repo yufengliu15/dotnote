@@ -121,6 +121,7 @@ class MainActivity : ComponentActivity() {
 @Composable
 private fun Dotnote(state: AppState) {
     val snackbar = remember { SnackbarHostState() }
+    val localLoading by state.store.loadingStatus.collectAsStateWithLifecycle()
     LaunchedEffect(state.message) {
         state.message?.let { text ->
             snackbar.showSnackbar(text)
@@ -129,7 +130,10 @@ private fun Dotnote(state: AppState) {
     }
     Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { inset ->
         Box(Modifier.fillMaxSize().padding(inset)) {
-            if (state.note == null) Library(state) else key(state.note!!.id) { Editor(state) }
+            // Avoid flashing an empty/stale library beneath the startup overlay.
+            if (!state.switching || !state.busy) {
+                if (state.note == null) Library(state) else key(state.note!!.id) { Editor(state) }
+            }
             if (state.busy)
                 Box(
                     Modifier.fillMaxSize()
@@ -144,7 +148,7 @@ private fun Dotnote(state: AppState) {
                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                         ) {
                             CircularProgressIndicator(Modifier.size(24.dp))
-                            Text("Working…")
+                            Text(if (state.switching) localLoading else "Updating notes…")
                         }
                     }
                 }
@@ -931,12 +935,44 @@ internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() ->
                         contentColor = Color.White,
                         shadowElevation = 3.dp,
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState()),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Text(
                                 "${state.selection.size} selected",
                                 Modifier.padding(start = 16.dp),
                                 fontSize = 12.sp,
                             )
+                            if (
+                                state.document.items.any {
+                                    it.id in state.selection && it.kind == "TEXT"
+                                }
+                            ) {
+                                SelectionSizing.entries.forEach { mode ->
+                                    TextButton(
+                                        onClick = {
+                                            canvas?.settle()
+                                            state.selectionSizing = mode
+                                        },
+                                        colors =
+                                            ButtonDefaults.textButtonColors(
+                                                contentColor =
+                                                    if (state.selectionSizing == mode) Color.White
+                                                    else Color.White.copy(alpha = .65f),
+                                                containerColor =
+                                                    if (state.selectionSizing == mode)
+                                                        Color.White.copy(alpha = .18f)
+                                                    else Color.Transparent,
+                                            ),
+                                    ) {
+                                        Text(
+                                            if (mode == SelectionSizing.RESIZE) "Resize"
+                                            else "Scale"
+                                        )
+                                    }
+                                }
+                            }
                             IconButton(
                                 enabled =
                                     state.document.items.any {

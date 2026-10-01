@@ -69,13 +69,13 @@ The eraser samples the swept segment between successive events with radius `14 /
 
 Lasso tool starts one of three gestures:
 
-- Within `20 / zoom` of the bottom-right selection handle: resize.
+- Within `20 / zoom` of the bottom-right selection handle: apply the selected Resize/Scale mode.
 - Otherwise within selected bounds expanded by `10 / zoom`: move selection.
 - Else clear selection and collect a new lasso path.
 
 A short gesture (`< 8 / zoom` displacement and fewer than five lasso samples) is tap selection: choose the last item in document order that hits within `12 / zoom`. A longer lasso selects unlocked items with **any stored point** inside the polygon after applying the item transform. It does not require full enclosure or compute exact curve/polygon intersections; a shape crossing the lasso with all stored corners outside can be missed.
 
-Movement applies delta to the captured original transforms. Resize uses the selection's top-left anchor, independent x/y factors clamped to `0.05..20` for that gesture. Aspect ratio is not preserved during selection resize, even for a previously constrained square/circle. There is no rotation handle. Preview always derives from the original list to avoid cumulative drift. Release commits one history entry.
+Movement applies delta to the captured original transforms. Non-text resizing uses the selection's top-left anchor, independent x/y factors clamped to `0.05..20` for that gesture. Text Resize changes wrapping width in local coordinates and remeasures the height at the existing font/scale. Text-only Scale uses the axis with the larger change from 1 uniformly and preserves the layout; mixed Scale uses the existing group transform. Aspect ratio is not preserved during selection resize, even for a previously constrained square/circle. There is no rotation handle. Preview always derives from the original list to avoid cumulative drift. Release commits one history entry.
 
 Selection actions recolor unlocked items, delete selected items, or clear selection. The color action opens the same picker used by palette slots. Recolor is undoable; choosing a palette color alone changes future ink, not selected objects.
 
@@ -83,7 +83,7 @@ Selection actions recolor unlocked items, delete selected items, or clear select
 
 Text items store their content, font size and two local rectangle corners. `TextTool.kt` uses Android StaticLayout to measure and render multiline Unicode text with a maximum line width of 4,096 world units. The shared ObjectRenderer caches layouts for the visible working set plus bounded offscreen entries and applies the same object transform for the canvas and PDF export. Text sits above the highlighter layer with pen/shapes. Font metrics depend on device fonts; a PDF captures the exporting device's rendering.
 
-Text hit tests use the full transformed rectangle; lasso uses the same rectangular overlap behavior as imported images. Existing selection transforms, recoloring, deletion and whole-object eraser behavior apply, with one history entry per change. The dialog draft does not preview-mutably replace the scene. Saving/deleting text commits through AppState, and reopening uses the stored dimensions for culling/selection.
+Text hit tests use the full transformed rectangle; lasso uses the same rectangular overlap behavior as imported images. Resize preserves the font/transform and reflows soft wraps; Scale changes the transform while preserving text/points. The two local corners store the chosen wrapping width and measured height without new JSON fields. Recoloring, deletion and whole-object eraser behavior apply, with one history entry per change. The dialog draft does not preview-mutably replace the scene. Saving/deleting text commits through AppState, and reopening uses the stored dimensions for culling/selection.
 
 ## Camera, grid and draw order
 

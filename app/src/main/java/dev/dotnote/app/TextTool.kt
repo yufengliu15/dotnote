@@ -12,6 +12,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.dp
 import kotlin.math.ceil
+import kotlin.math.roundToInt
 
 /** Drafts remain separate from the durable scene until the user saves. */
 data class TextEditRequest(
@@ -49,13 +50,57 @@ internal fun textItem(
     existing: Item? = null,
 ): Item {
     val normalized = content.replace("\r\n", "\n").replace('\r', '\n')
-    val layout = textLayout(normalized, size, existing?.color ?: color)
+    val layout =
+        textLayout(
+            normalized,
+            size,
+            existing?.color ?: color,
+            existing?.let { Bounds.of(it.points).width.roundToInt().coerceIn(1, 4096) },
+        )
     val anchor = existing?.points?.firstOrNull() ?: origin
     return (existing ?: Item(kind = "TEXT", color = color)).copy(
         text = normalized,
         fontSize = size,
         points = listOf(anchor, Pt(anchor.x + layout.width, anchor.y + layout.height)),
     )
+}
+
+/** Resize changes the wrapping width, retaining the font and previous visual scale. */
+internal fun reflowText(item: Item, localWidth: Float): Item {
+    require(item.kind == "TEXT")
+    val layout =
+        textLayout(
+            requireNotNull(item.text),
+            item.fontSize,
+            item.color,
+            localWidth.roundToInt().coerceIn(1, 4096),
+        )
+    val anchor = item.points.first()
+    return item.copy(points = listOf(anchor, Pt(anchor.x + layout.width, anchor.y + layout.height)))
+}
+
+internal fun sizeSelectionItem(
+    item: Item,
+    bounds: Bounds,
+    fx: Float,
+    fy: Float,
+    mode: SelectionSizing,
+): Item {
+    val origin = Pt(bounds.left, bounds.top)
+    val scaled = item.transform.resize(origin, fx, fy)
+    if (mode == SelectionSizing.RESIZE && item.kind == "TEXT") {
+        val anchor = item.points.first()
+        val destination = scaled.map(anchor)
+        return reflowText(item, Bounds.of(item.points).width * fx)
+            .copy(
+                transform =
+                    item.transform.copy(
+                        tx = destination.x - anchor.x * item.transform.sx,
+                        ty = destination.y - anchor.y * item.transform.sy,
+                    )
+            )
+    }
+    return item.copy(transform = scaled)
 }
 
 @Composable

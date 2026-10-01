@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.9.1 — 2026-10-01
+
+- Added Resize and Scale choices for selected text. Resize reflows words at the existing font size and fits the height to the lines; Scale preserves wrapping and scales text selections proportionally. Editing retains the chosen box width. No document migration is needed.
+- Replaced vague startup wording with actual local-loading phases and removed the empty-library flash. Startup scans now share document validation without constructing scenes or reparsing document JSON; index inserts are batched. Backup job reconciliation runs on IO independently of the startup overlay and never waits for repository networking.
+- Added reflow/scale, validation-equivalence and local startup/performance regressions. Android versionCode: 15.
+
 ## 0.9.0 — 2026-09-30
 
 - Replaced the Pan toolbar button with Text: add/edit multiline Unicode text, adjust font size, and select/move/resize/recolor/delete it with undo/redo. Text persists through reopening and backups and renders in PDF exports. Finger pan/fling and pinch remain available.

@@ -208,16 +208,14 @@ class VaultFiles(val root: File) {
                         require(validId(id) && !notePaths.containsKey(id)) {
                             "Duplicate or invalid note ID"
                         }
-                        val doc = o.getJSONObject("document").toString()
-                        DocumentCodec.decode(doc).items.forEach { item ->
-                            item.asset?.let {
-                                require(
-                                    File(assets, it).isFile &&
-                                        File(assets, it).canonicalFile ==
-                                            File(root.canonicalFile, "attachments/$it")
-                                ) {
-                                    "Missing PDF attachment: $it"
-                                }
+                        val documentObject = o.getJSONObject("document")
+                        DocumentCodec.validate(documentObject) { asset ->
+                            require(
+                                File(assets, asset).isFile &&
+                                    File(assets, asset).canonicalFile ==
+                                        File(root.canonicalFile, "attachments/$asset")
+                            ) {
+                                "Missing PDF attachment: $asset"
                             }
                         }
                         notePaths[id] = file.relativeTo(root).invariantSeparatorsPath
@@ -227,7 +225,7 @@ class VaultFiles(val root: File) {
                                 parent,
                                 o.getString("title"),
                                 o.getLong("modified"),
-                                doc,
+                                documentObject.toString(),
                                 o.optBoolean("template", false),
                             )
                         )

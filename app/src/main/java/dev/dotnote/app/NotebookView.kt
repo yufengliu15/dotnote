@@ -59,6 +59,8 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
     private var lasso = mutableListOf<Pt>()
     private var moving = false
     private var resizing = false
+    private var sizingMode = SelectionSizing.RESIZE
+    private var sizingTextOnly = false
     private var originalBounds: Bounds? = null
     private var navFocus: Pt? = null
     private var navSpan = 0f
@@ -573,6 +575,11 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
             Tool.ERASER -> erase(start, start)
             Tool.LASSO -> {
                 originalBounds = selectionBounds()
+                sizingMode = state.selectionSizing
+                sizingTextOnly =
+                    state.document.items
+                        .filter { it.id in state.selection }
+                        .let { it.isNotEmpty() && it.all { item -> item.kind == "TEXT" } }
                 resizing =
                     originalBounds?.let {
                         hypot(start.x - it.right, start.y - it.bottom) <
@@ -669,27 +676,27 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
                 if (moving || resizing) {
                     val before = gestureBefore ?: emptyList()
                     val bounds = originalBounds
-                    val fx =
+                    var fx =
                         if (resizing && bounds != null)
                             ((p.x - bounds.left) / max(bounds.width, 1f)).coerceIn(.05f, 20f)
                         else 1f
-                    val fy =
+                    var fy =
                         if (resizing && bounds != null)
                             ((p.y - bounds.top) / max(bounds.height, 1f)).coerceIn(.05f, 20f)
                         else 1f
+                    if (resizing && sizingMode == SelectionSizing.SCALE && sizingTextOnly) {
+                        val factor = if (abs(fx - 1f) >= abs(fy - 1f)) fx else fy
+                        fx = factor
+                        fy = factor
+                    }
                     state.preview(
                         before.map { item ->
                             if (item.id !in state.selection) item
+                            else if (resizing && bounds != null)
+                                sizeSelectionItem(item, bounds, fx, fy, sizingMode)
                             else
                                 item.copy(
-                                    transform =
-                                        if (resizing && bounds != null)
-                                            item.transform.resize(
-                                                Pt(bounds.left, bounds.top),
-                                                fx,
-                                                fy,
-                                            )
-                                        else item.transform.move(p.x - start.x, p.y - start.y)
+                                    transform = item.transform.move(p.x - start.x, p.y - start.y)
                                 )
                         }
                     )

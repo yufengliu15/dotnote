@@ -230,13 +230,21 @@ class TextTemplateTest {
                 assertEquals(40f, moved.transform.tx, .1f)
                 assertEquals(Color.BLUE, moved.color)
                 scenario.onActivity {
+                    state.selectionSizing = SelectionSizing.SCALE
                     val camera = state.document.camera
                     val handle =
                         Pt(
                             camera.x + moved.bounds.right * camera.zoom,
                             camera.y + moved.bounds.bottom * camera.zoom,
                         )
-                    gesture(view!!, handle, Pt(handle.x + 80f, handle.y + 40f))
+                    gesture(
+                        view!!,
+                        handle,
+                        Pt(
+                            handle.x + 80f,
+                            handle.y + 80f * moved.bounds.height / moved.bounds.width,
+                        ),
+                    )
                 }
                 assertEquals(
                     moved.bounds.width + 40f,
@@ -244,7 +252,7 @@ class TextTemplateTest {
                     .2f,
                 )
                 assertEquals(
-                    moved.bounds.height + 20f,
+                    moved.bounds.height * ((moved.bounds.width + 40f) / moved.bounds.width),
                     state.document.items.single().bounds.height,
                     .2f,
                 )
@@ -265,6 +273,114 @@ class TextTemplateTest {
                 await { state.note == null && !state.busy }
             } finally {
                 runBlocking { state.store.dao.deleteNote(id) }
+            }
+        }
+    }
+
+    @Test
+    fun resizeReflowsWhileScalePreservesWrappingAndEditingKeepsBoxWidth() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            lateinit var state: AppState
+            var view: NotebookView? = null
+            scenario.onActivity { state = ViewModelProvider(it)[AppState::class.java] }
+            await { !state.busy }
+            scenario.onActivity { state.createNote("Text sizing regression") }
+            await { state.note != null && !state.busy }
+            val noteId = state.note!!.id
+            try {
+                await {
+                    scenario.onActivity { view = canvas(it.window.decorView) }
+                    (view?.width ?: 0) > 0
+                }
+                val narrow =
+                    reflowText(textItem("like this", 24f, Color.BLACK, Pt(100f, 100f)), 55f)
+                assertEquals(
+                    2,
+                    textLayout(narrow.text!!, narrow.fontSize, narrow.color, 55).lineCount,
+                )
+                scenario.onActivity {
+                    state.camera(Camera(0f, 0f, 1f))
+                    state.tool = Tool.LASSO
+                    state.commit(listOf(narrow))
+                    state.selection = setOf(narrow.id)
+                }
+                click("Resize")
+                scenario.onActivity {
+                    gesture(
+                        view!!,
+                        Pt(narrow.bounds.right, narrow.bounds.bottom),
+                        Pt(narrow.bounds.left + 180f, narrow.bounds.bottom + 80f),
+                    )
+                }
+                val wide = state.document.items.single()
+                assertEquals(24f, wide.fontSize, 0f)
+                assertEquals(narrow.transform, wide.transform)
+                assertEquals(180f, wide.bounds.width, .1f)
+                assertTrue(wide.bounds.height < narrow.bounds.height)
+                assertEquals(1, textLayout(wide.text!!, wide.fontSize, wide.color, 180).lineCount)
+                screenshot("text-resize.png")
+                scenario.onActivity { state.undo() }
+                assertEquals(narrow, state.document.items.single())
+                scenario.onActivity {
+                    state.redo()
+                    state.requestText(Pt(120f, 110f))
+                    state.applyText("like this", 28f)
+                }
+                val edited = state.document.items.single()
+                assertEquals(180f, edited.bounds.width, .1f)
+                scenario.onActivity { state.closeNote() }
+                await { state.note == null && !state.busy }
+                scenario.onActivity { state.open(noteId) }
+                await { state.note?.id == noteId && !state.busy }
+                assertEquals(edited, state.document.items.single())
+                await {
+                    scenario.onActivity { view = canvas(it.window.decorView) }
+                    (view?.width ?: 0) > 0
+                }
+                scenario.onActivity {
+                    state.selection = setOf(edited.id)
+                    state.tool = Tool.LASSO
+                }
+                click("Scale")
+                scenario.onActivity {
+                    gesture(
+                        view!!,
+                        Pt(edited.bounds.right, edited.bounds.bottom),
+                        Pt(edited.bounds.left + edited.bounds.width * 2, edited.bounds.bottom),
+                    )
+                }
+                val scaled = state.document.items.single()
+                assertEquals(edited.points, scaled.points)
+                assertEquals(edited.text, scaled.text)
+                assertEquals(edited.fontSize, scaled.fontSize, 0f)
+                assertEquals(edited.transform.sx * 2, scaled.transform.sx, .01f)
+                assertEquals(edited.transform.sy * 2, scaled.transform.sy, .01f)
+                screenshot("text-scale.png")
+                scenario.onActivity {
+                    gesture(
+                        view!!,
+                        Pt(scaled.bounds.right, scaled.bounds.bottom),
+                        Pt(scaled.bounds.left + scaled.bounds.width / 2, scaled.bounds.bottom),
+                    )
+                }
+                val shrunk = state.document.items.single()
+                assertEquals(edited.transform.sx, shrunk.transform.sx, .01f)
+                assertEquals(edited.transform.sy, shrunk.transform.sy, .01f)
+                assertEquals(edited.points, shrunk.points)
+                scenario.onActivity { state.undo() }
+                assertEquals(scaled, state.document.items.single())
+                scenario.onActivity { state.undo() }
+                assertEquals(edited, state.document.items.single())
+                // Explicit paragraph breaks survive reflow; only soft wrapping changes.
+                val paragraphs = textItem("like\nthis", 24f, Color.BLACK, Pt(0f, 0f))
+                assertEquals(
+                    2,
+                    textLayout(reflowText(paragraphs, 300f).text!!, 24f, Color.BLACK, 300).lineCount,
+                )
+                scenario.onActivity { state.closeNote() }
+                await { state.note == null && !state.busy }
+            } finally {
+                runBlocking { state.store.dao.deleteNote(noteId) }
             }
         }
     }

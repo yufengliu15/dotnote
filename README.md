@@ -2,13 +2,21 @@
 
 An offline, native Kotlin notebook for Android tablets. Built with Jetpack Compose, AndroidX Ink 1.0, Room, and Android's PDF renderer. Works offline without an account. Optional GitHub backups; no subscriptions or analytics.
 
+## 0.9.1 text resizing and local startup
+
+Select text and choose **Resize** to change its wrapping width at the same font size. Drag the corner handle horizontally; the box height fits the resulting lines. Choose **Scale** to enlarge or shrink the existing layout proportionally. Editing text retains its box width. Explicit paragraph breaks remain intact.
+
+Startup loads local notes rather than syncing a repository. Its messages now identify opening the local vault, reading local notes and updating the note list. File validation avoids redundant document parsing and drawing-object construction, index writes are batched, and backup scheduling runs off the UI thread. The library appears after local loading, avoiding an empty-list flash.
+
+Current app version: **0.9.1 / code 15**. See [VALIDATION.md](VALIDATION.md) for measured emulator timings and test results.
+
 ## 0.9.0 text and templates
 
 Choose **Text** in the toolbar, then tap the canvas to add typed text. Tap existing text with Text to edit it; choose a font size in the dialog. Select supports moving, resizing, recoloring and deleting text, with undo/redo. Text is saved with the note and appears in PDF exports. Finger dragging still pans; pinching zooms.
 
 To reuse a layout, open **Note options → Use as template**, or enable **Create as template** in New note. The New note dialog offers **Blank note** and templates from the selected vault. Copies retain the layout, dot grid, camera and attachments, with independent content and new IDs. Templates remain editable notes in the library and travel with vault/ZIP backups.
 
-Current app version: **0.9.0 / code 14**. See [CHANGELOG.md](CHANGELOG.md) and [VALIDATION.md](VALIDATION.md). Existing notes and the local index migrate without clearing app data. Notes containing the new text objects require 0.9.0 or later; older app versions do not recognize them.
+Text and templates were introduced in **0.9.0 / code 14**. See [CHANGELOG.md](CHANGELOG.md) and [VALIDATION.md](VALIDATION.md). Existing notes and the local index migrate without clearing app data. Notes containing the new text objects require 0.9.0 or later; older app versions do not recognize them.
 
 ## 0.8.1 import fixes
 
@@ -52,7 +60,7 @@ Start with [docs/README.md](docs/README.md) for the implementation guide: archit
 
 ## Install
 
-Install `dist/dotnote-0.9.0.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
+Install `dist/dotnote-0.9.1.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
 
 Install this APK over the previous Dotnote build to keep your library.
 

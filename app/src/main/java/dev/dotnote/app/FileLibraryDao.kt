@@ -54,6 +54,15 @@ class FileLibraryDao(private val store: Store, private val index: LibraryDao) : 
         }
     }
 
+    // Normal bulk writes still use the files-first path; index rebuilds call the raw DAO.
+    override suspend fun putNotes(notes: List<Note>) {
+        notes.forEach { put(it) }
+    }
+
+    override suspend fun putFolders(folders: List<Folder>) {
+        folders.forEach { put(it) }
+    }
+
     override suspend fun put(folder: Folder) = mutate {
         val folders = index.allFolders()
         if (folders.find { it.id == folder.id } == folder) false

@@ -6,7 +6,7 @@
 
 The vault directory is the source of truth. [`Store`](../app/src/main/java/dev/dotnote/app/Store.kt) maintains a Room index for reactive lists and document queries. Its `dao` is a [`FileLibraryDao`](../app/src/main/java/dev/dotnote/app/FileLibraryDao.kt) wrapper, not the raw database DAO.
 
-Room schema 1 contains `folders(id PRIMARY KEY, parentId?, name)` and `notes(id PRIMARY KEY, folderId?, title, modified, document)`, with an index on `notes.folderId`. There are no SQL foreign-key constraints; application validation protects folder relationships. Folder flow sorts names case-insensitively. Note-summary flow selects metadata only and sorts by modification time descending. Opening a note loads the document string separately.
+Room schema 2 (with non-destructive 1→2 migration) contains `folders(id PRIMARY KEY, parentId?, name)` and `notes(id PRIMARY KEY, folderId?, title, modified, document, isTemplate DEFAULT 0)`, with an index on `notes.folderId`. There are no SQL foreign-key constraints; application validation protects folder relationships. Folder flow sorts names case-insensitively. Note-summary flow selects metadata only and sorts by modification time descending. Opening a note loads the document string separately.
 
 ```mermaid
 sequenceDiagram
@@ -62,7 +62,7 @@ Attachments are not garbage-collected after deletion. Local trash and unreferenc
 
 ## Initialization and legacy migration
 
-For production, each vault index is named `vault-<local-id>.db`. `Store.ready` runs initialization on IO under the root mutex and rebuilds Room in one `withTransaction` after reading the files. `Store.reload()` explicitly repeats the file scan/index rebuild. Merely having a newer database is never permission to overwrite canonical note files.
+For production, each vault index is named `vault-<local-id>.db`. `Store.ready` runs initialization on IO under the root mutex and rebuilds Room using batch upserts in one `withTransaction` after reading the files. The scanner parses each note once and validates its already parsed document without constructing every renderable item. All previous format, coordinate, ID, attachment and file-containment checks still apply. Debug builds log note counts and scan/index timing under `DotnoteStartup`, without note names/content or credentials. No timestamp-only cache bypasses validation. `Store.reload()` explicitly repeats the file scan/index rebuild. Merely having a newer database is never permission to overwrite canonical note files.
 
 The first default vault may be marked `legacyTarget` in catalog preferences. If it lacks `.dotnote/migrated`, initialization:
 
