@@ -490,14 +490,17 @@ class VaultFiles(val root: File, private val cacheFile: File? = null) {
     /** The same text org.json produced: metadata around the verbatim document JSON. */
     private fun encode(note: Note, document: String) = header(note) + document + footer(note)
 
-    private fun writeFile(file: File, note: Note, document: String) {
+    private fun writeFile(file: File, note: Note, document: String) =
+        writeFile(file, note) { it.write(document) }
+
+    private fun writeFile(file: File, note: Note, document: (java.io.Writer) -> Unit) {
         file.parentFile!!.mkdirs()
         val atomic = AtomicFile(file)
         val output = atomic.startWrite()
         try {
             val writer = java.io.BufferedWriter(java.io.OutputStreamWriter(output, Charsets.UTF_8), 65536)
             writer.write(header(note))
-            writer.write(document)
+            document(writer)
             writer.write(footer(note))
             writer.flush()
             atomic.finishWrite(output)
@@ -530,6 +533,35 @@ class VaultFiles(val root: File, private val cacheFile: File? = null) {
         notePaths[note.id] = path
         val stamp = FileStamp.of(File(root, path))
         val scan = NoteScan(stamp ?: FileStamp(-1, -1, -1), note.id, note.title, note.modified, note.isTemplate, assets)
+        if (stamp != null) remember(path, scan) else noteScans[note.id] = scan
+        saveCache(force = false)
+    }
+
+    /**
+     * Saves an editor scene in place, streaming each item's cached JSON straight to the file.
+     * [note] supplies metadata; its document field is ignored. Falls back to [writeNote] when the
+     * note's path changes.
+     */
+    fun writeScene(note: Note, scene: Document, assets: Collection<String>) {
+        require(validId(note.id))
+        val old = notePaths[note.id]
+        val path = notePath(note)
+        if (old != null && old != path) {
+            writeNote(note.copy(document = DocumentCodec.encode(scene)), assets)
+            return
+        }
+        writeFile(target(path), note) { DocumentCodec.encodeTo(scene, it) }
+        notePaths[note.id] = path
+        val stamp = FileStamp.of(File(root, path))
+        val scan =
+            NoteScan(
+                stamp ?: FileStamp(-1, -1, -1),
+                note.id,
+                note.title,
+                note.modified,
+                note.isTemplate,
+                assets.distinct(),
+            )
         if (stamp != null) remember(path, scan) else noteScans[note.id] = scan
         saveCache(force = false)
     }

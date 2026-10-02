@@ -215,9 +215,17 @@ class PerformanceBenchmarkTest {
     }
 
     /** UI-thread cost of a full canvas frame: background, highlight and ink layers. */
-    private fun drawLayers(view: NotebookView, canvas: Canvas): Double {
+    private fun drawLayers(
+        view: NotebookView,
+        canvas: Canvas,
+        layers: List<MutableList<Double>>? = null,
+    ): Double {
         val start = System.nanoTime()
-        for (i in 0 until minOf(3, view.childCount)) view.getChildAt(i).draw(canvas)
+        for (i in 0 until minOf(3, view.childCount)) {
+            val layer = System.nanoTime()
+            view.getChildAt(i).draw(canvas)
+            layers?.get(i)?.add(ms(layer))
+        }
         return ms(start)
     }
 
@@ -251,13 +259,17 @@ class PerformanceBenchmarkTest {
                 SystemClock.sleep(1000)
                 instrumentation.waitForIdleSync()
                 val times = mutableListOf<Double>()
+                val layers = List(3) { mutableListOf<Double>() }
                 instrumentation.runOnMainSync {
                     path.forEach {
                         pan(e, it)
-                        times.add(drawLayers(e.view, canvas))
+                        times.add(drawLayers(e.view, canvas, layers))
                     }
                 }
                 report("pan.frame.software", times)
+                report("pan.layer.background", layers[0])
+                report("pan.layer.markers", layers[1])
+                report("pan.layer.ink", layers[2])
                 // Real hardware-rendered frames, including RenderThread work.
                 val totals = mutableListOf<Double>()
                 val listener =
@@ -329,19 +341,26 @@ class PerformanceBenchmarkTest {
                 }
                 waitTiles(e.view)
                 val times = mutableListOf<Double>()
+                val stateTimes = mutableListOf<Double>()
+                val layers = List(3) { mutableListOf<Double>() }
                 repeat(8) { n ->
                     val stroke = handwriting(5000 + n, 200f + n * 30f, 200f + (n % 4) * 20f)
                     instrumentation.runOnMainSync {
                         val start = System.nanoTime()
                         e.state.commit(e.state.document.items + stroke)
                         e.view.refresh()
-                        drawLayers(e.view, canvas)
+                        stateTimes.add(ms(start))
+                        drawLayers(e.view, canvas, layers)
                         times.add(ms(start))
                     }
                     instrumentation.waitForIdleSync()
                     SystemClock.sleep(150)
                 }
                 report("stroke.commit.ui", times)
+                report("stroke.commit.state", stateTimes)
+                report("stroke.commit.layer.background", layers[0])
+                report("stroke.commit.layer.markers", layers[1])
+                report("stroke.commit.layer.ink", layers[2])
                 // Durable save of the edited note, measured as the user-visible "Saved" latency.
                 val saves = mutableListOf<Double>()
                 var failures = 0

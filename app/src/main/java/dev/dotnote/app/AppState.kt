@@ -490,7 +490,22 @@ class AppState(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun open(id: String) = runAction { if (flush()) store.dao.note(id)?.let { openNow(it) } }
+    fun open(id: String) = runAction {
+        val start = android.os.SystemClock.elapsedRealtimeNanos()
+        if (flush()) {
+            val flushed = android.os.SystemClock.elapsedRealtimeNanos()
+            store.dao.note(id)?.let {
+                val read = android.os.SystemClock.elapsedRealtimeNanos()
+                openNow(it)
+                if (BuildConfig.DEBUG)
+                    android.util.Log.i(
+                        "DotnoteOpen",
+                        "flush=${(flushed - start) / 1e6} ms, read=${(read - flushed) / 1e6} ms, " +
+                            "decode+apply=${(android.os.SystemClock.elapsedRealtimeNanos() - read) / 1e6} ms",
+                    )
+            }
+        }
+    }
 
     private suspend fun openNow(value: Note) {
         val decoded = withContext(Dispatchers.IO) { DocumentCodec.decode(value.document) }

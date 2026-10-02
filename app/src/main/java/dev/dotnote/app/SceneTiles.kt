@@ -156,9 +156,12 @@ internal class SceneTiles(
                 val appended = desired.subList(old.size, desired.size).toList()
                 record(Change(++version, appended, null))
                 dropPrevious()
+                val started = System.nanoTime()
                 level?.tiles?.values?.forEach { tile ->
                     if (tile.ready) applyAppend(tile, appended)
                 }
+                if (BuildConfig.DEBUG)
+                    android.util.Log.i("DotnoteTiles", "append ${(System.nanoTime() - started) / 1e6} ms")
                 return
             }
         }
@@ -190,7 +193,76 @@ internal class SceneTiles(
         record(Change(++version, null, dirty))
         dropPrevious()
         level?.tiles?.values?.forEach { tile ->
-            if (tile.ready && dirty.any { it.outset(tile.pad).intersects(tile.world) }) invalidate(tile)
+            if (!tile.ready) return@forEach
+            val touched = dirty.filter { it.outset(tile.pad).intersects(tile.world) }
+            if (touched.isNotEmpty() && !repaint(tile, touched)) invalidate(tile)
+        }
+    }
+
+    private val uiIndex = SceneIndex()
+    private val uiHits = IntList()
+    private val clip = RectF()
+
+    /**
+     * Redraws only the changed parts of a ready tile: each dirty rectangle (pixel-aligned) is
+     * cleared and every item touching it is drawn again in order, clipped to it. Coverage of a
+     * pixel does not depend on pixels outside it, so the result equals a full render. Returns
+     * false when the area is large enough that a background re-render is cheaper.
+     */
+    private fun repaint(tile: Tile, dirty: List<Bounds>): Boolean {
+        if (dirty.size > 48) return false
+        val l = tile.level.scale
+        val ox = tile.x * SIZE
+        val oy = tile.y * SIZE
+        val rects = ArrayList<IntArray>(dirty.size)
+        var area = 0L
+        for (b in dirty) {
+            val r = b.outset(tile.pad)
+            val left = maxOf(0, floor(r.left * l - ox).toInt())
+            val top = maxOf(0, floor(r.top * l - oy).toInt())
+            val right = minOf(SIZE, kotlin.math.ceil(r.right * l - ox).toInt())
+            val bottom = minOf(SIZE, kotlin.math.ceil(r.bottom * l - oy).toInt())
+            if (right <= left || bottom <= top) continue
+            area += (right - left).toLong() * (bottom - top)
+            rects.add(intArrayOf(left, top, right, bottom))
+        }
+        if (area > SIZE.toLong() * SIZE / 2) return false
+        for (r in rects) {
+            val world =
+                Bounds((r[0] + ox) / l, (r[1] + oy) / l, (r[2] + ox) / l, (r[3] + oy) / l)
+                    .outset(tile.pad)
+            uiIndex.query(items, world, uiHits)
+            val ink = ArrayList<Item>()
+            val marker = ArrayList<Item>()
+            for (k in 0 until uiHits.size) {
+                val item = items[uiHits[k]]
+                if (item.kind == "HIGHLIGHTER") marker.add(item) else if (item.kind != "PDF") ink.add(item)
+            }
+            clip.set(r[0].toFloat(), r[1].toFloat(), r[2].toFloat(), r[3].toFloat())
+            repaintLayer(tile, false, ink)
+            repaintLayer(tile, true, marker)
+        }
+        return true
+    }
+
+    private fun repaintLayer(tile: Tile, markers: Boolean, list: List<Item>) {
+        var bitmap = if (markers) tile.marker else tile.ink
+        if (bitmap == null) {
+            if (list.isEmpty()) return
+            bitmap = obtain()
+            bytes += bitmap.allocationByteCount
+            if (markers) tile.marker = bitmap else tile.ink = bitmap
+        }
+        val canvas = Canvas(bitmap)
+        canvas.clipRect(clip)
+        canvas.drawColor(0, android.graphics.PorterDuff.Mode.CLEAR)
+        if (list.isEmpty()) return
+        canvas.translate(-tile.x * SIZE.toFloat(), -tile.y * SIZE.toFloat())
+        canvas.scale(tile.level.scale, tile.level.scale)
+        if (markers) uiRenderer.drawMarkerFills(canvas, list, colorOrder)
+        else {
+            val matrix = Matrix(canvas.matrix)
+            list.forEach { uiRenderer.draw(canvas, it, matrix) }
         }
     }
 
@@ -396,6 +468,7 @@ internal class SceneTiles(
         val order = colorOrder
         val pooled = arrayOf(pool.poll(), pool.poll())
         worker.execute {
+            val started = System.nanoTime()
             var ink: Bitmap? = null
             var marker: Bitmap? = null
             var failed = false
@@ -431,6 +504,11 @@ internal class SceneTiles(
                 android.util.Log.w("DotnoteTiles", "Tile render failed", e)
             }
             unused.forEach { pool.add(it) }
+            if (BuildConfig.DEBUG)
+                android.util.Log.i(
+                    "DotnoteTiles",
+                    "tile ${t.x},${t.y} ${workerScratch.size} items ${(System.nanoTime() - started) / 1e6} ms",
+                )
             val inkResult = ink
             val markerResult = marker
             post(Runnable { complete(t, jobVersion, inkResult, markerResult, failed) })
@@ -587,7 +665,7 @@ internal class SceneTiles(
                 bitmap,
                 (t.x * SIZE + f.ox.roundToInt()).toFloat(),
                 (t.y * SIZE + f.oy.roundToInt()).toFloat(),
-                null,
+                tilePaint,
             )
         } else {
             val k = f.scale / t.level.scale
@@ -597,12 +675,55 @@ internal class SceneTiles(
                 (t.x + 1) * SIZE * k + f.ox,
                 (t.y + 1) * SIZE * k + f.oy,
             )
-            canvas.drawBitmap(bitmap, null, dst, blit)
+            canvas.drawBitmap(bitmap, null, dst, tilePaint ?: blit)
         }
     }
 
+    private var tilePaint: Paint? = null
+    private val translucent = Paint(Paint.FILTER_BITMAP_FLAG)
+
+    /**
+     * Draws marker tiles directly at [alpha] when every visible tile (or its previous-level
+     * cover) is finished. Tiles never overlap, so this equals compositing them in one
+     * translucent layer without allocating that full-screen layer. Returns false, drawing
+     * nothing, when a gap needs the layered vector fallback.
+     */
+    fun drawTranslucent(
+        canvas: Canvas,
+        camera: Camera,
+        density: Float,
+        width: Int,
+        height: Int,
+        alpha: Int,
+    ): Boolean {
+        val f = frame(camera, density, width, height)
+        for (y in f.y0..f.y1) for (x in f.x0..f.x1) {
+            val t = tile(f.level, x, y)
+            if (!t.ready && !drawPrevious(null, f, t, true)) return false
+        }
+        translucent.alpha = alpha
+        tilePaint = translucent
+        try {
+            for (y in f.y0..f.y1) for (x in f.x0..f.x1) {
+                val t = tile(f.level, x, y)
+                t.used = frame
+                if (t.ready) drawTile(canvas, f, t, t.marker)
+                else {
+                    canvas.save()
+                    screenRect(f, t)
+                    canvas.clipRect(dst)
+                    drawPrevious(canvas, f, t, true)
+                    canvas.restore()
+                }
+            }
+        } finally {
+            tilePaint = null
+        }
+        return true
+    }
+
     /** Covers a missing tile with finished tiles from the previous zoom level, if complete. */
-    private fun drawPrevious(canvas: Canvas, f: Frame, t: Tile, markers: Boolean): Boolean {
+    private fun drawPrevious(canvas: Canvas?, f: Frame, t: Tile, markers: Boolean): Boolean {
         val p = previous ?: return false
         if (p === f.level) return false
         val x0 = floor(t.world.left * p.scale / SIZE).toInt()
@@ -614,6 +735,7 @@ internal class SceneTiles(
             val pt = p.tiles[(x.toLong() shl 32) xor (y.toLong() and 0xffffffffL)]
             if (pt == null || !pt.ready) return false
         }
+        canvas ?: return true
         val frameForPrevious = Frame(p, f.scale, f.ox, f.oy, 0, 0, 0, 0, true)
         for (y in y0..y1) for (x in x0..x1) {
             val pt = p.tiles.getValue((x.toLong() shl 32) xor (y.toLong() and 0xffffffffL))

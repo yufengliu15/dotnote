@@ -313,6 +313,24 @@ object DocumentCodec {
      * Byte-for-byte the same text Android's org.json produced, built directly. Each immutable item
      * keeps its encoded form, so saving after one stroke only formats that stroke.
      */
+    /** Streams the same text as [encode] without building the whole document in memory. */
+    fun encodeTo(doc: Document, out: Appendable) {
+        val head = StringBuilder(96)
+        head.append("{\"version\":1,\"dots\":").append(doc.dots).append(",\"camera\":[")
+        JsonText.number(head, doc.camera.x)
+        head.append(',')
+        JsonText.number(head, doc.camera.y)
+        head.append(',')
+        JsonText.number(head, doc.camera.zoom)
+        head.append("],\"items\":[")
+        out.append(head)
+        doc.items.forEachIndexed { index, item ->
+            if (index > 0) out.append(',')
+            out.append(itemText(item))
+        }
+        out.append("]}")
+    }
+
     fun encode(doc: Document): String {
         var size = 96
         val parts = arrayOfNulls<String>(doc.items.size)

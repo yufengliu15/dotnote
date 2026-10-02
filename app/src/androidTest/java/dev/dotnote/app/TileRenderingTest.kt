@@ -170,17 +170,20 @@ class TileRenderingTest {
                 c.restore()
             }
             val dragged = all.filter { it.id in excluded }
-            val layer = canvas.saveLayerAlpha(null, 85)
-            tiles.draw(canvas, camera, density, width, height, true, fallback(true))
-            canvas.save()
-            canvas.concat(m)
-            renderer.drawMarkerFills(
-                canvas,
-                dragged.filter { it.kind == "HIGHLIGHTER" },
-                order(dragged),
-            )
-            canvas.restore()
-            canvas.restoreToCount(layer)
+            val draggedMarkers = dragged.filter { it.kind == "HIGHLIGHTER" }
+            // Same choice as the editor: direct translucent tiles when complete, else a layer.
+            if (
+                draggedMarkers.isNotEmpty() ||
+                    !tiles.drawTranslucent(canvas, camera, density, width, height, 85)
+            ) {
+                val layer = canvas.saveLayerAlpha(null, 85)
+                tiles.draw(canvas, camera, density, width, height, true, fallback(true))
+                canvas.save()
+                canvas.concat(m)
+                renderer.drawMarkerFills(canvas, draggedMarkers, order(dragged))
+                canvas.restore()
+                canvas.restoreToCount(layer)
+            }
             tiles.draw(canvas, camera, density, width, height, false, fallback(false))
             canvas.save()
             canvas.concat(m)

@@ -156,16 +156,14 @@ class FileLibraryDao(private val store: Store, private val index: LibraryDao) : 
     suspend fun saveDocument(id: String, document: Document, modified: Long): Boolean {
         store.ready.await()
         return withContext(Dispatchers.IO) {
-            val text = DocumentCodec.encode(document)
+            // Format new items before taking the vault lock; the write then only streams text.
+            document.items.forEach { DocumentCodec.itemText(it) }
             val assets = document.items.mapNotNullTo(LinkedHashSet()) { it.asset }
             var written = false
             store.mutex.withLock {
                 val summary = index.note(id)
                 if (summary != null) {
-                    store.files.writeNote(
-                        summary.copy(document = text, modified = modified),
-                        trustedAssets = assets,
-                    )
+                    store.files.writeScene(summary.copy(modified = modified), document, assets)
                     index.save(id, "", modified)
                     store.changed()
                     written = true

@@ -392,6 +392,66 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
     private fun excluded(): Set<String> =
         if ((moving || resizing) && pointer >= 0) state.selection else emptySet()
 
+    /** Selection being moved, rasterized once at the start of the drag and then translated. */
+    private class Sprite(
+        val key: Any,
+        val ink: Bitmap?,
+        val markers: Bitmap?,
+        val left: Float,
+        val top: Float,
+        val scale: Float,
+    )
+
+    private var sprite: Sprite? = null
+
+    private fun dragSprite(): Sprite? {
+        if (!moving || pointer < 0 || state.selection.isEmpty()) {
+            sprite = null
+            return null
+        }
+        val before = gestureBefore ?: return null
+        val scale = state.document.camera.zoom * density
+        val key = Triple(before, state.selection, scale)
+        sprite?.let { if (it.key == key) return it }
+        val selected = before.filter { it.id in state.selection && it.kind != "PDF" }
+        if (selected.isEmpty()) return null
+        var box = selected[0].bounds
+        selected.forEach { box = box.union(it.bounds) }
+        box = box.outset(2f / scale)
+        val w = kotlin.math.ceil(box.width * scale).toInt()
+        val h = kotlin.math.ceil(box.height * scale).toInt()
+        // Huge selections are drawn live instead of holding a large bitmap.
+        if (w <= 0 || h <= 0 || w.toLong() * h > width.toLong() * height * 2) return null
+        fun render(markers: Boolean): Bitmap? {
+            val list =
+                selected.filter { (it.kind == "HIGHLIGHTER") == markers }.ifEmpty { return null }
+            val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val c = Canvas(bitmap)
+            c.scale(scale, scale)
+            c.translate(-box.left, -box.top)
+            if (markers) renderer.drawMarkerFills(c, list, list.map { it.color }.distinct().toIntArray())
+            else {
+                val m = Matrix(c.matrix)
+                list.forEach { renderer.draw(c, it, m) }
+            }
+            return bitmap
+        }
+        return Sprite(key, render(false), render(true), box.left, box.top, scale).also { sprite = it }
+    }
+
+    /** Draws the dragged selection's sprite at the current drag offset; false if unavailable. */
+    private fun drawSprite(canvas: Canvas, markers: Boolean): Boolean {
+        val s = dragSprite() ?: return false
+        val bitmap = (if (markers) s.markers else s.ink) ?: return true
+        val c = state.document.camera
+        val x = (s.left + last.x - start.x) * s.scale + c.x * density
+        val y = (s.top + last.y - start.y) * s.scale + c.y * density
+        canvas.drawBitmap(bitmap, x, y, spritePaint)
+        return true
+    }
+
+    private val spritePaint = Paint(Paint.FILTER_BITMAP_FLAG)
+
     private fun syncTiles() {
         tiles.update(state.document.items, excluded(), handoffs.values)
     }
@@ -445,6 +505,14 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
             if (skip.isEmpty()) emptyList()
             else state.document.items.filter { it.kind == "HIGHLIGHTER" && it.id in skip }
         if (!tiles.hasMarkers && live == null && dragged.isEmpty()) return
+        val camera = state.document.camera
+        // Finished tiles alone can be drawn translucent directly, without a layer.
+        if (
+            live == null &&
+                dragged.isEmpty() &&
+                tiles.drawTranslucent(canvas, camera, density, width, height, 85)
+        )
+            return
         // Opaque fills share ONE translucent layer, so overlaps never darken.
         val layer = canvas.saveLayerAlpha(null, 85)
         if (tiles.hasMarkers)
@@ -454,7 +522,14 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
                 complete ->
                 drawVector(c, area, markers = true, complete = complete)
             }
-        if (dragged.isNotEmpty() || live != null) {
+        if (dragged.isNotEmpty() && drawSprite(canvas, markers = true)) {
+            live?.let {
+                canvas.save()
+                canvas.concat(screenMatrix())
+                it.draw(canvas, livePaint)
+                canvas.restore()
+            }
+        } else if (dragged.isNotEmpty() || live != null) {
             canvas.save()
             canvas.concat(screenMatrix())
             if (dragged.isNotEmpty())
@@ -564,6 +639,16 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
     }
 
     private fun drawInk(canvas: Canvas) {
+        val started = System.nanoTime()
+        try {
+            drawInkLayer(canvas)
+        } finally {
+            val ms = (System.nanoTime() - started) / 1e6
+            if (BuildConfig.DEBUG && ms > 50) android.util.Log.i("DotnoteFrame", "ink layer $ms ms")
+        }
+    }
+
+    private fun drawInkLayer(canvas: Canvas) {
         syncTiles()
         val doc = state.document
         tiles.draw(canvas, doc.camera, density, width, height, false) { c, area, complete ->
@@ -574,10 +659,17 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
         canvas.save()
         canvas.concat(matrix)
         val skip = excluded()
-        if (skip.isNotEmpty())
-            for (item in doc.items)
-                if (item.id in skip && item.kind != "HIGHLIGHTER" && item.kind != "PDF")
-                    renderer.draw(canvas, item, matrix)
+        if (skip.isNotEmpty()) {
+            // A moved selection blits its sprite (screen space); resizing draws vectors.
+            canvas.restore()
+            val sprited = moving && drawSprite(canvas, markers = false)
+            canvas.save()
+            canvas.concat(matrix)
+            if (!sprited)
+                for (item in doc.items)
+                    if (item.id in skip && item.kind != "HIGHLIGHTER" && item.kind != "PDF")
+                        renderer.draw(canvas, item, matrix)
+        }
         shape?.let { renderer.draw(canvas, it, matrix) }
         if (lasso.size > 1) {
             paint.style = Paint.Style.STROKE
@@ -932,6 +1024,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
         pointer = -1
         moving = false
         resizing = false
+        sprite = null
         refresh()
     }
 
