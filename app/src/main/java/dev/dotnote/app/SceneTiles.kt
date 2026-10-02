@@ -689,8 +689,16 @@ internal class SceneTiles(
         t.ready = true
         pending.forEach { change -> change.appended?.let { applyAppend(t, it) } }
         trim()
-        changed()
+        // Redraw only when the finished tile shows something on screen: empty tiles and the
+        // offscreen ring look exactly like what the frame already drew.
+        if ((t.ink != null || t.marker != null) && onScreen(t)) changed()
         pump()
+    }
+
+    private fun onScreen(t: Tile): Boolean {
+        val f = lastFrame ?: return true
+        if (t.level !== f.level) return true
+        return t.x in f.x0..f.x1 && t.y in f.y0..f.y1
     }
 
     /** Keeps tile memory bounded, evicting tiles that were not needed by the latest frame. */

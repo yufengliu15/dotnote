@@ -19,12 +19,12 @@ import androidx.input.motionprediction.MotionEventPredictor
 import java.util.concurrent.Executors
 import kotlin.math.*
 
-// Constructed exclusively by Compose AndroidView with its editor state.
-@android.annotation.SuppressLint("ViewConstructor")
 private const val PAPER = 0xfffafaf6.toInt()
 // Objects a not-yet-rendered tile area may draw directly while its tile is being rendered.
 private const val FALLBACK_LIMIT = 300
 
+// Constructed exclusively by Compose AndroidView with its editor state.
+@android.annotation.SuppressLint("ViewConstructor")
 class NotebookView(context: Context, val state: AppState) : FrameLayout(context) {
     private val density = resources.displayMetrics.density
     private val ink = InProgressStrokesView(context)
