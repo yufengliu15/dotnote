@@ -4,7 +4,7 @@ An offline, native Kotlin notebook for Android tablets. Built with Jetpack Compo
 
 ## 0.11.0 in-app updates
 
-Check for updates, download a verified APK, and open Android’s installer from **Version & updates**. No extra updater app or account is required. Release automation builds and verifies updates on GitHub; a successful release workflow run automatically creates a GitHub Release and uploads the APK.
+Check for updates, download a verified APK, and open Android’s installer from **Version & updates**. No extra updater app or account is required. Release automation builds and verifies updates on GitHub; a successful release workflow run automatically creates a GitHub prerelease and uploads the APK. Stable releases require an explicit selection.
 
 ## 0.10.1 note previews
 

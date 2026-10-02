@@ -7,6 +7,11 @@ on:
         type: boolean
         required: true
         default: true
+      stable:
+        description: Publish a stable release (leave unchecked for prerelease)
+        type: boolean
+        required: true
+        default: false
 permissions:
   contents: read
 concurrency:
@@ -86,7 +91,13 @@ jobs:
         if: inputs.publish
         env:
           GH_TOKEN: ${{ github.token }}
-        run: python3 scripts/publish-release.py --publish "$RUNNER_TEMP/dotnote-release"
+          STABLE_RELEASE: ${{ inputs.stable }}
+        run: |
+          args=(--publish "$RUNNER_TEMP/dotnote-release")
+          if [[ "$STABLE_RELEASE" == "true" ]]; then
+            args+=(--stable)
+          fi
+          python3 scripts/publish-release.py "${args[@]}"
       - name: Remove signing file
         if: always()
         run: rm -f "$RUNNER_TEMP/dotnote.keystore"

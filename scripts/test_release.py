@@ -45,3 +45,24 @@ class SigningOutputTest(unittest.TestCase):
                        "Signer #1 certificate SHA-256 digest: " + "a" * 64 + "\nSigner #2 certificate SHA-256 digest: " + "b" * 64):
             with self.assertRaises(ValueError):
                 package.certificate_digest(report)
+
+
+class ReleaseChannelTest(unittest.TestCase):
+    def test_default_stays_prerelease_during_draft_and_publication(self):
+        from unittest.mock import patch
+        with patch.object(publish, "run") as run:
+            publish.publish_artifacts("0.12.0", "commit", [], "Release notes")
+        create, edit = [call.args for call in run.call_args_list]
+        self.assertIn("--draft", create)
+        self.assertIn("--prerelease=true", create)
+        self.assertIn("--prerelease=true", edit)
+        self.assertIn("--latest=false", edit)
+
+    def test_stable_requires_explicit_request(self):
+        from unittest.mock import patch
+        with patch.object(publish, "run") as run:
+            publish.publish_artifacts("0.12.0", "commit", [], "Release notes", stable=True)
+        create, edit = [call.args for call in run.call_args_list]
+        self.assertIn("--prerelease=false", create)
+        self.assertIn("--prerelease=false", edit)
+        self.assertIn("--latest=true", edit)

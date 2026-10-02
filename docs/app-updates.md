@@ -25,7 +25,7 @@ Do not paste secrets into issues, logs, source, or chat. Use protected environme
 
 ## Publishing
 
-The manual **Release Dotnote** GitHub Actions workflow runs only against `main`. Use **Actions → Release Dotnote → Run workflow** on `main`. **Publish release** is checked by default: a successful run creates the versioned GitHub Release and uploads the signed APK, source archive, checksums and update manifest automatically. Uncheck it only when you specifically want a validation-only run. Ordinary commits do not publish APKs. Validation artifacts are retained for seven days. The release environment permits only `main`; signing credentials are configured as environment secrets.
+The manual **Release Dotnote** GitHub Actions workflow runs only against `main`. Use **Actions → Release Dotnote → Run workflow** on `main`. **Publish release** is checked by default: a successful run creates the versioned GitHub Release and uploads the signed APK, source archive, checksums and update manifest automatically. Uncheck it only when you specifically want a validation-only run. Releases are **prereleases by default**. Select **stable** only when a stable release is explicitly requested; only stable releases are marked Latest. To see prereleases in Dotnote, enable **Include preview releases** in the update dialog. Ordinary commits do not publish APKs. Validation artifacts are retained for seven days. The release environment permits only `main`; signing credentials are configured as environment secrets.
 
 Before running it, update `app/build.gradle.kts` with a fresh display version and strictly increasing code, update CHANGELOG, README, documentation index and VALIDATION with actual local checks. Include all intended source changes in reviewed commits. A failed delivery must not be disguised by replacing a historical APK.
 
@@ -33,7 +33,7 @@ The workflow checks all remote release manifests and the pinned local baseline f
 
 The source archive includes workflow and release scripts but no keys. One release job runs at a time. Release tags refer to the tested clean commit; no dirty snapshots can be published by this workflow. Delivered local snapshot manifests also reserve their version codes: commit those records, and advance the version/code for the next published build. Local development snapshots remain possible using `package-release.py --allow-dirty`; they must be labeled honestly and must use their own new version.
 
-For local non-debuggable builds, set `DOTNOTE_KEYSTORE`, `DOTNOTE_STORE_PASSWORD`, `DOTNOTE_KEY_ALIAS`, and `DOTNOTE_KEY_PASSWORD` in the environment, then run `:app:assembleRelease :app:lintRelease`. Do not embed credentials in committed commands. `publish-release.py` without arguments checks remote history only; `--publish <artifact-directory>` is an external publishing action.
+For local non-debuggable builds, set `DOTNOTE_KEYSTORE`, `DOTNOTE_STORE_PASSWORD`, `DOTNOTE_KEY_ALIAS`, and `DOTNOTE_KEY_PASSWORD` in the environment, then run `:app:assembleRelease :app:lintRelease`. Do not embed credentials in committed commands. `publish-release.py` without arguments checks remote history only; `--publish <artifact-directory>` publishes a prerelease. Add `--stable` only for an explicitly requested stable release. Both are external publishing actions.
 
 ## Acceptance
 

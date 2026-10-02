@@ -35,9 +35,21 @@ def validate_history(releases, version, code, previous_codes):
         raise ValueError("versionCode must exceed every known delivered build.")
 
 
+def publish_artifacts(version, commit, files, notes, stable=False):
+    with tempfile.TemporaryDirectory() as temp:
+        body = Path(temp) / "notes.md"
+        body.write_text(notes)
+        # Draft first: the updater cannot see a release until every asset is attached.
+        run("gh", "release", "create", f"v{version}", "--repo", REPO, "--target", commit,
+            "--draft", f"--prerelease={str(not stable).lower()}", "--title", f"Dotnote {version}", "--notes-file", str(body), *map(str, files))
+        run("gh", "release", "edit", f"v{version}", "--repo", REPO, "--draft=false",
+            f"--prerelease={str(not stable).lower()}", f"--latest={str(stable).lower()}")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--publish", type=Path, metavar="ARTIFACT_DIRECTORY")
+    parser.add_argument("--stable", action="store_true", help="Explicitly publish a stable release; default is prerelease")
     args = parser.parse_args()
     version, code = metadata()
     # --slurp preserves page boundaries while requesting all release history.
@@ -84,13 +96,7 @@ def main():
     changelog = (ROOT / "CHANGELOG.md").read_text().split(f"## {version}", 1)[1].split("\n## ", 1)[0]
     notes = f"Dotnote {version} (Android build {code})\n\n" + changelog.split("\n", 1)[1].strip()
     notes += f"\n\nBuilt from {manifest['gitCommit']}. Install the APK as an update; keep your existing app data.\n"
-    with tempfile.TemporaryDirectory() as temp:
-        body = Path(temp) / "notes.md"
-        body.write_text(notes)
-        # Draft first: the updater cannot see a release until every asset is attached.
-        run("gh", "release", "create", f"v{version}", "--repo", REPO, "--target", manifest["gitCommit"],
-            "--draft", "--title", f"Dotnote {version}", "--notes-file", str(body), *map(str, files))
-        run("gh", "release", "edit", f"v{version}", "--repo", REPO, "--draft=false", "--latest")
+    publish_artifacts(version, manifest["gitCommit"], files, notes, stable=args.stable)
     print(f"Published https://github.com/{REPO}/releases/tag/v{version}")
 
 

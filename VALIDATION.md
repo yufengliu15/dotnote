@@ -1,5 +1,7 @@
 # 0.11.2 automatic APK publication validation
 
+Release-channel policy follow-up: publishing now defaults to prerelease; stable publication requires an explicit workflow/CLI choice. Nine Python tests (including draft/publication channel checks), YAML validation and `git diff --check` pass. This changes release classification only: the 0.11.2 tag and APK remain the originally tested build; no replacement APK or new version is generated.
+
 App version **0.11.2 / code 21**, October 1, 2026. Workflow dispatch now defaults to publishing a versioned GitHub Release with the verified APK, source archive, checksums and updater manifest. Existing app/update behavior is unchanged.
 
 - Local Python release tests and YAML syntax checks pass. A fresh hosted run must pass compilation, 44 JVM tests, lint, 11 isolated emulator tests, signing verification and clean-source packaging before publishing this version.
