@@ -190,6 +190,10 @@ abstract class LibraryDatabase : RoomDatabase() {
     }
 }
 
+/** App-private record of validated note files for a vault; never part of the vault itself. */
+fun scanCache(context: Context, root: File): File =
+    File(context.noBackupFilesDir, "vault-scan/${root.name}.json")
+
 class Store(
     val context: Context,
     databaseName: String = "dotnote.db",
@@ -200,7 +204,7 @@ class Store(
         if (databaseName == "dotnote.db") requestedVault ?: catalog.selected()
         else "test-" + databaseName.replace(Regex("[^a-zA-Z0-9-]"), "-")
     val root = catalog.root(vaultId)
-    val files = VaultFiles(root)
+    val files = VaultFiles(root, scanCache(context, root))
     val mutex = VaultLocks.forRoot(root)
     private val isAppVault = databaseName == "dotnote.db"
     val db =
@@ -246,7 +250,7 @@ class Store(
                                 source.copyTo(File(files.assets, name), overwrite = true)
                             }
                         files.replace(old.first, old.second)
-                        files.read()
+                        files.scan()
                         atomicText(migrated, "1")
                     } finally {
                         legacy.close()
@@ -254,7 +258,7 @@ class Store(
                 }
                 loading.value = "Reading local notes…"
                 val scanStart = android.os.SystemClock.elapsedRealtimeNanos()
-                val (folders, notes) = files.read()
+                val (folders, notes) = files.scan()
                 val indexStart = android.os.SystemClock.elapsedRealtimeNanos()
                 loading.value = "Updating note list…"
                 rebuildIndex(folders, notes)
@@ -278,7 +282,7 @@ class Store(
             index.putNotes(notes)
         }
 
-    val dao: LibraryDao = FileLibraryDao(this, index)
+    val dao = FileLibraryDao(this, index)
     val assets
         get() = files.assets
 
@@ -294,7 +298,7 @@ class Store(
         withContext(Dispatchers.IO) {
             ready.await()
             mutex.withLock {
-                val (folders, notes) = files.read()
+                val (folders, notes) = files.scan()
                 rebuildIndex(folders, notes)
             }
         }
@@ -326,7 +330,11 @@ class Store(
     suspend fun backup(uri: Uri) =
         withContext(Dispatchers.IO) {
             ready.await()
-            val (folders, notes) = mutex.withLock { index.allFolders() to index.allNotes() }
+            val (folders, notes) =
+                mutex.withLock {
+                    index.allFolders() to
+                        index.allNotes().map { it.copy(document = files.readDocument(it.id)) }
+                }
             val manifest =
                 JSONObject()
                     .put("format", "dotnote")
@@ -356,10 +364,8 @@ class Store(
                             }
                         ),
                     )
-            val attachments =
-                notes
-                    .flatMap { DocumentCodec.decode(it.document).items.mapNotNull(Item::asset) }
-                    .toSet()
+            val attachments = LinkedHashSet<String>()
+            notes.forEach { DocumentCodec.validate(it.document, attachments::add) }
             val output =
                 context.contentResolver.openOutputStream(uri, "wt")
                     ?: error("Cannot open backup destination")

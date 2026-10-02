@@ -829,24 +829,7 @@ internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() ->
                 Spacer(Modifier.width(5.dp))
                 Text(if (state.saved) "Saved" else "Unsaved", fontSize = 12.sp)
             }
-            IconButton(
-                enabled = state.history.canUndo,
-                onClick = {
-                    canvas?.settle()
-                    state.undo()
-                },
-            ) {
-                Icon(Icons.AutoMirrored.Outlined.Undo, "Undo")
-            }
-            IconButton(
-                enabled = state.history.canRedo,
-                onClick = {
-                    canvas?.settle()
-                    state.redo()
-                },
-            ) {
-                Icon(Icons.AutoMirrored.Outlined.Redo, "Redo")
-            }
+            UndoRedoButtons(state) { canvas?.settle() }
             if (!quickNote)
                 Box {
                     IconButton(onClick = { overflow = true }) {
@@ -950,103 +933,7 @@ internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() ->
                         it.refresh()
                     },
                 )
-                if (state.document.items.isEmpty())
-                    Surface(
-                        Modifier.align(Alignment.TopCenter).padding(24.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        color = Color(0xffeef1e7),
-                    ) {
-                        Text(
-                            "Write with your pen. Drag or flick with a finger. Pinch to zoom.",
-                            Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                            fontSize = 12.sp,
-                            color = Forest,
-                        )
-                    }
-                Surface(
-                    Modifier.align(Alignment.BottomEnd).padding(16.dp),
-                    shape = RoundedCornerShape(18.dp),
-                    color = Paper,
-                    shadowElevation = 2.dp,
-                    border = BorderStroke(1.dp, Color(0xffe0e4da)),
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            "${(state.document.camera.zoom*100).toInt()}%",
-                            Modifier.padding(start = 16.dp, end = 4.dp),
-                            fontSize = 12.sp,
-                        )
-                        IconButton(onClick = { canvas?.fit() }) {
-                            Icon(Icons.Outlined.CenterFocusStrong, "Fit all content")
-                        }
-                    }
-                }
-                if (state.selection.isNotEmpty())
-                    Surface(
-                        Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        color = Forest,
-                        contentColor = Color.White,
-                        shadowElevation = 3.dp,
-                    ) {
-                        Row(
-                            Modifier.horizontalScroll(rememberScrollState()),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                "${state.selection.size} selected",
-                                Modifier.padding(start = 16.dp),
-                                fontSize = 12.sp,
-                            )
-                            if (
-                                state.document.items.any {
-                                    it.id in state.selection && it.kind == "TEXT"
-                                }
-                            ) {
-                                SelectionSizing.entries.forEach { mode ->
-                                    TextButton(
-                                        onClick = {
-                                            canvas?.settle()
-                                            state.selectionSizing = mode
-                                        },
-                                        colors =
-                                            ButtonDefaults.textButtonColors(
-                                                contentColor =
-                                                    if (state.selectionSizing == mode) Color.White
-                                                    else Color.White.copy(alpha = .65f),
-                                                containerColor =
-                                                    if (state.selectionSizing == mode)
-                                                        Color.White.copy(alpha = .18f)
-                                                    else Color.Transparent,
-                                            ),
-                                    ) {
-                                        Text(
-                                            if (mode == SelectionSizing.RESIZE) "Resize"
-                                            else "Scale"
-                                        )
-                                    }
-                                }
-                            }
-                            IconButton(
-                                enabled =
-                                    state.document.items.any {
-                                        it.id in state.selection && !it.locked && !it.image
-                                    },
-                                onClick = {
-                                    canvas?.settle()
-                                    selectionColor = true
-                                },
-                            ) {
-                                Icon(Icons.Outlined.Palette, "Change selection color")
-                            }
-                            IconButton(onClick = { state.deleteSelection() }) {
-                                Icon(Icons.Outlined.DeleteOutline, "Delete selection")
-                            }
-                            IconButton(onClick = { state.selection = emptySet() }) {
-                                Icon(Icons.Outlined.Close, "Clear selection")
-                            }
-                        }
-                    }
+                CanvasOverlays(state, { canvas }, { selectionColor = true })
             }
             if (!quickNote && state.dock == "Right")
                 ToolStrip(
@@ -1394,4 +1281,144 @@ private fun Stepper(label: String, value: Int, onChange: (Int) -> Unit) {
             Icon(Icons.Outlined.Add, "More $label")
         }
     }
+}
+
+@Composable
+private fun UndoRedoButtons(state: AppState, settle: () -> Unit) {
+    // History is plain state; every edit, undo and redo advances revision. Camera moves do not.
+    state.revision
+    IconButton(
+        enabled = state.history.canUndo,
+        onClick = {
+            settle()
+            state.undo()
+        },
+    ) {
+        Icon(Icons.AutoMirrored.Outlined.Undo, "Undo")
+    }
+    IconButton(
+        enabled = state.history.canRedo,
+        onClick = {
+            settle()
+            state.redo()
+        },
+    ) {
+        Icon(Icons.AutoMirrored.Outlined.Redo, "Redo")
+    }
+}
+
+/** Canvas overlays read the scene in their own scope, so panning does not recompose the editor. */
+@Composable
+private fun BoxScope.CanvasOverlays(
+    state: AppState,
+    canvas: () -> NotebookView?,
+    onSelectionColor: () -> Unit,
+) {
+    val empty by remember(state) { derivedStateOf { state.document.items.isEmpty() } }
+    val zoom by remember(state) { derivedStateOf { (state.document.camera.zoom * 100).toInt() } }
+    // Selection details scan the scene only when something is selected and only recompose when
+    // the answers change, not on every pan frame.
+    val selectionHasText by remember(state) {
+        derivedStateOf {
+            val selected = state.selection
+            selected.isNotEmpty() && state.document.items.any { it.id in selected && it.kind == "TEXT" }
+        }
+    }
+    val selectionRecolorable by remember(state) {
+        derivedStateOf {
+            val selected = state.selection
+            selected.isNotEmpty() &&
+                state.document.items.any { it.id in selected && !it.locked && !it.image }
+        }
+    }
+                if (empty)
+                    Surface(
+                        Modifier.align(Alignment.TopCenter).padding(24.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xffeef1e7),
+                    ) {
+                        Text(
+                            "Write with your pen. Drag or flick with a finger. Pinch to zoom.",
+                            Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                            fontSize = 12.sp,
+                            color = Forest,
+                        )
+                    }
+                Surface(
+                    Modifier.align(Alignment.BottomEnd).padding(16.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    color = Paper,
+                    shadowElevation = 2.dp,
+                    border = BorderStroke(1.dp, Color(0xffe0e4da)),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "$zoom%",
+                            Modifier.padding(start = 16.dp, end = 4.dp),
+                            fontSize = 12.sp,
+                        )
+                        IconButton(onClick = { canvas()?.fit() }) {
+                            Icon(Icons.Outlined.CenterFocusStrong, "Fit all content")
+                        }
+                    }
+                }
+                if (state.selection.isNotEmpty())
+                    Surface(
+                        Modifier.align(Alignment.BottomCenter).padding(bottom = 80.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = Forest,
+                        contentColor = Color.White,
+                        shadowElevation = 3.dp,
+                    ) {
+                        Row(
+                            Modifier.horizontalScroll(rememberScrollState()),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                "${state.selection.size} selected",
+                                Modifier.padding(start = 16.dp),
+                                fontSize = 12.sp,
+                            )
+                            if (selectionHasText) {
+                                SelectionSizing.entries.forEach { mode ->
+                                    TextButton(
+                                        onClick = {
+                                            canvas()?.settle()
+                                            state.selectionSizing = mode
+                                        },
+                                        colors =
+                                            ButtonDefaults.textButtonColors(
+                                                contentColor =
+                                                    if (state.selectionSizing == mode) Color.White
+                                                    else Color.White.copy(alpha = .65f),
+                                                containerColor =
+                                                    if (state.selectionSizing == mode)
+                                                        Color.White.copy(alpha = .18f)
+                                                    else Color.Transparent,
+                                            ),
+                                    ) {
+                                        Text(
+                                            if (mode == SelectionSizing.RESIZE) "Resize"
+                                            else "Scale"
+                                        )
+                                    }
+                                }
+                            }
+                            IconButton(
+                                enabled = selectionRecolorable,
+                                onClick = {
+                                    canvas()?.settle()
+                                    onSelectionColor()
+                                },
+                            ) {
+                                Icon(Icons.Outlined.Palette, "Change selection color")
+                            }
+                            IconButton(onClick = { state.deleteSelection() }) {
+                                Icon(Icons.Outlined.DeleteOutline, "Delete selection")
+                            }
+                            IconButton(onClick = { state.selection = emptySet() }) {
+                                Icon(Icons.Outlined.Close, "Clear selection")
+                            }
+                        }
+                    }
 }

@@ -1,6 +1,5 @@
 package dev.dotnote.app
 
-import android.database.sqlite.SQLiteBlobTooBigException
 import android.net.Uri
 import androidx.room.Room
 import androidx.sqlite.db.SimpleSQLiteQuery
@@ -41,15 +40,14 @@ class LargeNoteStorageTest {
             assertTrue(note.document.toByteArray().size > 4 * 1024 * 1024)
             store.dao.put(note)
             store.dao.put(small)
-            // Reproduce the reported platform failure with the old full-row query.
-            assertThrows(SQLiteBlobTooBigException::class.java) {
-                store.db
-                    .query(SimpleSQLiteQuery("SELECT * FROM notes WHERE id = ?", arrayOf(note.id)))
-                    .use {
-                        it.moveToFirst()
-                        it.getString(it.getColumnIndexOrThrow("document"))
-                    }
-            }
+            // The index is metadata-only, so the old full-row query can no longer overflow the
+            // 2 MB CursorWindow that used to throw SQLiteBlobTooBigException here.
+            store.db
+                .query(SimpleSQLiteQuery("SELECT * FROM notes WHERE id = ?", arrayOf(note.id)))
+                .use {
+                    assertTrue(it.moveToFirst())
+                    assertEquals("", it.getString(it.getColumnIndexOrThrow("document")))
+                }
             assertEquals(2, store.dao.notes().first().size)
             assertEquals(note, store.dao.note(note.id))
             assertEquals(setOf(note, small), store.dao.allNotes().toSet())

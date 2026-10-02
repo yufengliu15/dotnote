@@ -27,15 +27,31 @@ data class Bounds(val left: Float, val top: Float, val right: Float, val bottom:
         Bounds(min(left, b.left), min(top, b.top), max(right, b.right), max(bottom, b.bottom))
 
     companion object {
-        fun of(points: List<Pt>): Bounds =
-            if (points.isEmpty()) Bounds(0f, 0f, 0f, 0f)
-            else
-                Bounds(
+        fun of(points: List<Pt>): Bounds {
+            if (points.isEmpty()) return Bounds(0f, 0f, 0f, 0f)
+            var left = Float.POSITIVE_INFINITY
+            var top = Float.POSITIVE_INFINITY
+            var right = Float.NEGATIVE_INFINITY
+            var bottom = Float.NEGATIVE_INFINITY
+            var nan = false
+            for (index in points.indices) {
+                val p = points[index]
+                if (p.x.isNaN() || p.y.isNaN()) nan = true
+                if (p.x < left) left = p.x
+                if (p.x > right) right = p.x
+                if (p.y < top) top = p.y
+                if (p.y > bottom) bottom = p.y
+            }
+            // NaN coordinates keep the previous minOf/maxOf behavior.
+            if (nan)
+                return Bounds(
                     points.minOf { it.x },
                     points.minOf { it.y },
                     points.maxOf { it.x },
                     points.maxOf { it.y },
                 )
+            return Bounds(left, top, right, bottom)
+        }
     }
 }
 
@@ -47,8 +63,13 @@ data class Transform(
 ) {
     fun map(p: Pt) = Pt(p.x * sx + tx, p.y * sy + ty)
 
-    fun map(b: Bounds): Bounds =
-        Bounds.of(listOf(map(Pt(b.left, b.top)), map(Pt(b.right, b.bottom))))
+    fun map(b: Bounds): Bounds {
+        val l = b.left * sx + tx
+        val t = b.top * sy + ty
+        val r = b.right * sx + tx
+        val bt = b.bottom * sy + ty
+        return Bounds(min(l, r), min(t, bt), max(l, r), max(t, bt))
+    }
 
     fun move(dx: Float, dy: Float) = copy(tx = tx + dx, ty = ty + dy)
 
@@ -107,6 +128,9 @@ data class Item(
             )
     val locked
         get() = kind == "PDF" && !image
+
+    /** Cached JSON for this immutable item; copies start without it. */
+    @Volatile @Transient internal var encoded: String? = null
 }
 
 data class Camera(val x: Float = 40f, val y: Float = 40f, val zoom: Float = 1f) {
@@ -180,23 +204,27 @@ class History {
     }
 }
 
-fun segmentDistance(p: Pt, a: Pt, b: Pt): Float {
-    val dx = b.x - a.x
-    val dy = b.y - a.y
+fun segmentDistance(p: Pt, a: Pt, b: Pt): Float = segmentDistance(p.x, p.y, a.x, a.y, b.x, b.y)
+
+internal fun segmentDistance(px: Float, py: Float, ax: Float, ay: Float, bx: Float, by: Float): Float {
+    val dx = bx - ax
+    val dy = by - ay
     val t =
         if (dx * dx + dy * dy == 0f) 0f
-        else (((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)).coerceIn(0f, 1f)
-    return hypot(p.x - a.x - t * dx, p.y - a.y - t * dy)
+        else (((px - ax) * dx + (py - ay) * dy) / (dx * dx + dy * dy)).coerceIn(0f, 1f)
+    return hypot(px - ax - t * dx, py - ay - t * dy)
 }
 
-fun insidePolygon(p: Pt, polygon: List<Pt>): Boolean {
+fun insidePolygon(p: Pt, polygon: List<Pt>): Boolean = insidePolygon(p.x, p.y, polygon)
+
+internal fun insidePolygon(x: Float, y: Float, polygon: List<Pt>): Boolean {
     if (polygon.size < 3) return false
     var inside = false
     var j = polygon.lastIndex
     for (i in polygon.indices) {
         val a = polygon[i]
         val b = polygon[j]
-        if ((a.y > p.y) != (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x)
+        if ((a.y > y) != (b.y > y) && x < (b.x - a.x) * (y - a.y) / (b.y - a.y) + a.x)
             inside = !inside
         j = i
     }
@@ -250,17 +278,40 @@ fun shapeSegments(item: Item): List<Pair<Pt, Pt>> {
 }
 
 fun hitItem(item: Item, p: Pt, radius: Float): Boolean {
-    if (item.locked || !item.bounds.outset(radius).contains(p)) return false
+    if (item.locked) return false
+    val b = item.bounds
+    if (!(p.x >= b.left - radius && p.x <= b.right + radius && p.y >= b.top - radius && p.y <= b.bottom + radius))
+        return false
     if (item.fill)
         return item.points.chunked(2).any {
             it.size == 2 && item.transform.map(Bounds.of(it)).outset(radius).contains(p)
         }
     if (item.image || item.kind == "TEXT") return true
-    val tolerance = radius + item.width * max(item.transform.sx, item.transform.sy) / 2
-    val pts = item.points.map(item.transform::map)
-    if (pts.size == 1) return hypot(p.x - pts[0].x, p.y - pts[0].y) <= tolerance
-    val lines = if (item.ink != null) pts.zipWithNext() else shapeSegments(item)
-    return lines.any { segmentDistance(p, it.first, it.second) <= tolerance }
+    val t = item.transform
+    val tolerance = radius + item.width * max(t.sx, t.sy) / 2
+    val points = item.points
+    if (points.size == 1) {
+        val q = points[0]
+        return hypot(p.x - (q.x * t.sx + t.tx), p.y - (q.y * t.sy + t.ty)) <= tolerance
+    }
+    if (item.ink == null) return shapeSegments(item).any { segmentDistance(p, it.first, it.second) <= tolerance }
+    // Ink strokes: test each segment without allocating mapped points.
+    for (i in 1 until points.size) {
+        val a = points[i - 1]
+        val c = points[i]
+        if (
+            segmentDistance(
+                p.x,
+                p.y,
+                a.x * t.sx + t.tx,
+                a.y * t.sy + t.ty,
+                c.x * t.sx + t.tx,
+                c.y * t.sy + t.ty,
+            ) <= tolerance
+        )
+            return true
+    }
+    return false
 }
 
 fun lassoHits(item: Item, polygon: List<Pt>): Boolean {
@@ -271,8 +322,18 @@ fun lassoHits(item: Item, polygon: List<Pt>): Boolean {
             polygon.any(b::contains) ||
                 listOf(Pt(b.left, b.top), Pt(b.right, b.bottom)).any { insidePolygon(it, polygon) }
         }
-    if (!item.image && item.kind != "TEXT")
-        return item.points.any { insidePolygon(item.transform.map(it), polygon) }
+    if (!item.image && item.kind != "TEXT") {
+        val area = Bounds.of(polygon)
+        if (!item.bounds.intersects(area)) return false
+        val t = item.transform
+        for (point in item.points) {
+            val x = point.x * t.sx + t.tx
+            val y = point.y * t.sy + t.ty
+            if (x < area.left || x > area.right || y < area.top || y > area.bottom) continue
+            if (insidePolygon(x, y, polygon)) return true
+        }
+        return false
+    }
     val b = item.bounds
     return polygon.any(b::contains) ||
         listOf(Pt(b.left, b.top), Pt(b.right, b.top), Pt(b.right, b.bottom), Pt(b.left, b.bottom))
@@ -280,46 +341,310 @@ fun lassoHits(item: Item, polygon: List<Pt>): Boolean {
 }
 
 object DocumentCodec {
-    fun encode(doc: Document): String =
-        JSONObject()
-            .put("version", 1)
-            .put("dots", doc.dots)
-            .put("camera", JSONArray(listOf(doc.camera.x, doc.camera.y, doc.camera.zoom)))
-            .put("items", JSONArray(doc.items.map(::itemJson)))
-            .toString()
+    private val kinds = (Tool.entries.map { it.name } + listOf("PDF", "HAND")).toHashSet()
+    private val assetPattern = Regex("[a-f0-9-]+\\.pdf")
 
-    fun itemJson(i: Item): JSONObject =
-        JSONObject()
-            .put("id", i.id)
-            .put("kind", i.kind)
-            .put("color", i.color)
-            .put("width", i.width)
-            .put("points", JSONArray(i.points.map { JSONArray(listOf(it.x, it.y)) }))
-            .put("ink", i.ink)
-            .put(
-                "transform",
-                JSONArray(listOf(i.transform.sx, i.transform.sy, i.transform.tx, i.transform.ty)),
-            )
-            .put("rows", i.rows)
-            .put("cols", i.cols)
-            .put("asset", i.asset)
-            .put("page", i.page)
-            .apply {
-                if (i.image) put("image", true)
-                if (i.fill) put("fill", true)
-                if (i.kind == "TEXT") {
-                    put("text", i.text)
-                    put("fontSize", i.fontSize)
-                }
+    /** Streams the same text as [encode] without building the whole document in memory. */
+    fun encodeTo(doc: Document, out: Appendable) {
+        val head = StringBuilder(96)
+        head.append("{\"version\":1,\"dots\":").append(doc.dots).append(",\"camera\":[")
+        JsonText.number(head, doc.camera.x)
+        head.append(',')
+        JsonText.number(head, doc.camera.y)
+        head.append(',')
+        JsonText.number(head, doc.camera.zoom)
+        head.append("],\"items\":[")
+        out.append(head)
+        doc.items.forEachIndexed { index, item ->
+            if (index > 0) out.append(',')
+            out.append(itemText(item))
+        }
+        out.append("]}")
+    }
+
+    /**
+     * Byte-for-byte the same text Android's org.json produced, built directly. Each immutable item
+     * keeps its encoded form, so saving after one stroke only formats that stroke.
+     */
+    fun encode(doc: Document): String {
+        var size = 96
+        val parts = arrayOfNulls<String>(doc.items.size)
+        doc.items.forEachIndexed { index, item ->
+            val text = itemText(item)
+            parts[index] = text
+            size += text.length + 1
+        }
+        val out = StringBuilder(size)
+        out.append("{\"version\":1,\"dots\":").append(doc.dots).append(",\"camera\":[")
+        JsonText.number(out, doc.camera.x)
+        out.append(',')
+        JsonText.number(out, doc.camera.y)
+        out.append(',')
+        JsonText.number(out, doc.camera.zoom)
+        out.append("],\"items\":[")
+        parts.forEachIndexed { index, text ->
+            if (index > 0) out.append(',')
+            out.append(text)
+        }
+        return out.append("]}").toString()
+    }
+
+    internal fun itemText(i: Item): String {
+        i.encoded?.let {
+            return it
+        }
+        val out = StringBuilder(64 + i.points.size * 20 + (i.ink?.length ?: 0) * 21 / 20)
+        out.append("{\"id\":")
+        JsonText.string(out, i.id)
+        out.append(",\"kind\":")
+        JsonText.string(out, i.kind)
+        out.append(",\"color\":").append(i.color).append(",\"width\":")
+        JsonText.number(out, i.width)
+        out.append(",\"points\":[")
+        i.points.forEachIndexed { index, p ->
+            if (index > 0) out.append(',')
+            out.append('[')
+            JsonText.number(out, p.x)
+            out.append(',')
+            JsonText.number(out, p.y)
+            out.append(']')
+        }
+        out.append(']')
+        i.ink?.let {
+            out.append(",\"ink\":")
+            JsonText.string(out, it)
+        }
+        out.append(",\"transform\":[")
+        JsonText.number(out, i.transform.sx)
+        out.append(',')
+        JsonText.number(out, i.transform.sy)
+        out.append(',')
+        JsonText.number(out, i.transform.tx)
+        out.append(',')
+        JsonText.number(out, i.transform.ty)
+        out.append("],\"rows\":").append(i.rows).append(",\"cols\":").append(i.cols)
+        i.asset?.let {
+            out.append(",\"asset\":")
+            JsonText.string(out, it)
+        }
+        out.append(",\"page\":").append(i.page)
+        if (i.image) out.append(",\"image\":true")
+        if (i.fill) out.append(",\"fill\":true")
+        if (i.kind == "TEXT") {
+            i.text?.let {
+                out.append(",\"text\":")
+                JsonText.string(out, it)
             }
+            out.append(",\"fontSize\":")
+            JsonText.number(out, i.fontSize)
+        }
+        return out.append('}').toString().also { i.encoded = it }
+    }
 
-    fun decode(text: String): Document = decode(JSONObject(text))
+    fun itemJson(i: Item): JSONObject = JSONObject(itemText(i))
+
+    fun decode(text: String): Document = parse(text, true) {}!!
 
     internal fun decode(o: JSONObject): Document = read(o, true) {}
 
     /** Startup checks the same fields without allocating a renderable scene for every note. */
     internal fun validate(o: JSONObject, onAsset: (String) -> Unit = {}) {
         read(o, false, onAsset)
+    }
+
+    /** Validates document text without building items; reports each attachment. */
+    internal fun validate(text: String, onAsset: (String) -> Unit = {}) {
+        parse(text, false, onAsset)
+    }
+
+    private class ItemFields {
+        var id: String? = null
+        var kind: String? = null
+        var color: Int? = null
+        var width = Float.NaN
+        var hasWidth = false
+        var points: ArrayList<Pt>? = null
+        var pointCount = -1
+        var ink: String? = null
+        var transform: FloatArray? = null
+        var rows: Int? = null
+        var cols: Int? = null
+        var asset: String? = null
+        var page: Int? = null
+        var image = false
+        var fill = false
+        var hasInk = false
+        var text: String? = null
+        var fontSize = 24f
+    }
+
+    /** One streaming pass with the same validation as [read]. */
+    internal fun parse(text: String, materialize: Boolean, onAsset: (String) -> Unit): Document? {
+        val json = JsonCursor(text)
+        var version: Int? = null
+        var dots: Boolean? = null
+        var camera: FloatArray? = null
+        var items: ArrayList<Item>? = null
+        val ids = HashSet<String>()
+        json.beginObject()
+        var first = true
+        while (true) {
+            val key = json.nextKey(first) ?: break
+            first = false
+            when (key) {
+                "version" -> version = json.int()
+                "dots" -> dots = json.boolean()
+                "camera" -> camera = floats(json, 3)
+                "items" -> {
+                    val list = ArrayList<Item>()
+                    json.beginArray()
+                    var firstItem = true
+                    while (json.hasNext(firstItem)) {
+                        firstItem = false
+                        item(json, materialize, ids, onAsset)?.let(list::add)
+                    }
+                    items = list
+                }
+                else -> json.skip()
+            }
+        }
+        json.end()
+        require(version == 1) { "Unsupported note version" }
+        val c = requireNotNull(camera) { "Missing camera" }
+        val parsed = requireNotNull(items) { "Missing items" }
+        val showDots = requireNotNull(dots) { "Missing dots" }
+        if (!materialize) return null
+        return Document(parsed, Camera(c[0], c[1], c[2].coerceIn(.08f, 8f)), showDots)
+    }
+
+    private fun floats(json: JsonCursor, minimum: Int): FloatArray {
+        val values = FloatArray(4)
+        var count = 0
+        json.beginArray()
+        while (json.hasNext(count == 0)) {
+            val value = json.finite()
+            if (count < 4) values[count] = value
+            count++
+        }
+        require(count >= minimum) { "Missing coordinates" }
+        return values
+    }
+
+    private fun item(
+        json: JsonCursor,
+        materialize: Boolean,
+        ids: HashSet<String>,
+        onAsset: (String) -> Unit,
+    ): Item? {
+        val f = ItemFields()
+        json.beginObject()
+        var first = true
+        while (true) {
+            val key = json.nextKey(first) ?: break
+            first = false
+            when (key) {
+                "id" -> f.id = json.string()
+                "kind" -> f.kind = json.string()
+                "color" -> f.color = json.int()
+                "width" -> {
+                    f.width = json.number().toFloat()
+                    f.hasWidth = true
+                }
+                "points" -> {
+                    val list = if (materialize) ArrayList<Pt>() else null
+                    var count = 0
+                    json.beginArray()
+                    while (json.hasNext(count == 0)) {
+                        // [x, y, ...]: two finite numbers; extra elements are ignored.
+                        json.beginArray()
+                        if (!json.hasNext(true)) json.fail("Missing coordinates")
+                        val x = json.finite()
+                        if (!json.hasNext(false)) json.fail("Missing coordinates")
+                        val y = json.finite()
+                        while (json.hasNext(false)) json.finite()
+                        list?.add(Pt(x, y))
+                        count++
+                    }
+                    f.points = list
+                    f.pointCount = count
+                }
+                "fill" -> f.fill = if (json.isNull()) false else json.boolean()
+                "ink" ->
+                    if (json.isNull()) json.fail("Invalid ink")
+                    else if (materialize) {
+                        f.ink = json.string()
+                        f.hasInk = true
+                    }
+                    else {
+                        json.skipString()
+                        f.ink = ""
+                        f.hasInk = true
+                    }
+                "transform" -> f.transform = floats(json, 4)
+                "rows" -> f.rows = json.int()
+                "cols" -> f.cols = json.int()
+                "asset" -> f.asset = if (json.isNull()) "null" else json.string()
+                "page" -> f.page = json.int()
+                "image" -> f.image = if (json.isNull()) false else json.boolean()
+                "text" -> f.text = if (json.isNull()) null else json.string()
+                "fontSize" -> f.fontSize = if (json.isNull()) 24f else json.number().toFloat()
+                else -> json.skip()
+            }
+        }
+        val transform = requireNotNull(f.transform) { "Missing transform" }
+        require(f.pointCount >= 0) { "Missing points" }
+        val kind = requireNotNull(f.kind) { "Missing object type" }
+        require(kind in kinds) { "Unknown object type" }
+        val asset = f.asset
+        require(asset == null || assetPattern.matches(asset)) { "Invalid attachment name" }
+        require(f.hasWidth) { "Missing width" }
+        val width = f.width
+        val content = if (kind == "TEXT") requireNotNull(f.text) { "Invalid text content" } else null
+        if (kind == "TEXT") {
+            require(content != null && content.isNotBlank() && content.length <= 10000) {
+                "Invalid text content"
+            }
+            require(f.fontSize.isFinite() && f.fontSize in 8f..144f && f.pointCount == 2) {
+                "Invalid text dimensions"
+            }
+        }
+        require(
+            !f.fill ||
+                ((kind == "PEN" || kind == "HIGHLIGHTER") &&
+                    f.pointCount >= 2 &&
+                    f.pointCount % 2 == 0 &&
+                    !f.hasInk)
+        ) {
+            "Invalid fill coverage"
+        }
+        require(!f.image || (kind == "PDF" && asset != null)) { "Invalid image attachment" }
+        require(width.isFinite() && width in .1f..100f)
+        require(transform[0] > 0 && transform[1] > 0)
+        val id = requireNotNull(f.id) { "Missing object ID" }
+        require(ids.add(id)) { "Duplicate object IDs" }
+        val color = requireNotNull(f.color) { "Missing color" }
+        val rows = requireNotNull(f.rows) { "Missing rows" }.coerceIn(1, 30)
+        val cols = requireNotNull(f.cols) { "Missing columns" }.coerceIn(1, 30)
+        val page = requireNotNull(f.page) { "Missing page" }.also { require(it >= 0) }
+        asset?.let(onAsset)
+        if (!materialize) return null
+        return Item(
+            id = id,
+            kind = kind,
+            color = color,
+            width = width,
+            points = requireNotNull(f.points),
+            ink = f.ink,
+            transform = Transform(transform[0], transform[1], transform[2], transform[3]),
+            rows = rows,
+            cols = cols,
+            asset = asset,
+            page = page,
+            image = f.image,
+            fill = f.fill,
+            text = content,
+            fontSize = f.fontSize,
+        )
     }
 
     private fun read(o: JSONObject, materialize: Boolean, onAsset: (String) -> Unit): Document {

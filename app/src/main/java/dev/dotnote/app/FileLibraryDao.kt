@@ -4,7 +4,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
-/** Write files before updating the disposable Room index. Reopen repairs a stale index. */
+/**
+ * Write files before updating the disposable Room index. Reopen repairs a stale index.
+ *
+ * The index holds note metadata only (its document column is empty), so no row approaches
+ * Android's 2 MB CursorWindow and startup/saves never copy note content into SQLite. Documents
+ * are read from the authoritative files: [note] and [allNotes] return complete notes, and a note
+ * passed to a write with an empty document keeps its stored content.
+ */
 class FileLibraryDao(private val store: Store, private val index: RoomLibraryDao) : LibraryDao {
     override fun folders() = index.folders()
 
@@ -22,10 +29,24 @@ class FileLibraryDao(private val store: Store, private val index: RoomLibraryDao
 
     override suspend fun allNotes(): List<Note> {
         store.ready.await()
-        return index.allNotes()
+        return withContext(Dispatchers.IO) {
+            store.mutex.withLock {
+                index.allNotes().map { it.copy(document = store.files.readDocument(it.id)) }
+            }
+        }
     }
 
     override suspend fun note(id: String): Note? {
+        store.ready.await()
+        return withContext(Dispatchers.IO) {
+            store.mutex.withLock {
+                index.note(id)?.let { it.copy(document = store.files.readDocument(id)) }
+            }
+        }
+    }
+
+    /** Index metadata without reading the note's content. */
+    suspend fun summary(id: String): Note? {
         store.ready.await()
         return index.note(id)
     }
@@ -46,10 +67,16 @@ class FileLibraryDao(private val store: Store, private val index: RoomLibraryDao
     }
 
     override suspend fun put(note: Note) = mutate {
-        if (index.note(note.id) == note) false
+        val current = index.note(note.id)
+        if (
+            current != null &&
+                current == note.copy(document = "") &&
+                (note.document.isEmpty() || note.document == store.files.readDocument(note.id))
+        )
+            false
         else {
             store.files.writeNote(note)
-            index.put(note)
+            index.put(note.copy(document = ""))
             true
         }
     }
@@ -102,7 +129,7 @@ class FileLibraryDao(private val store: Store, private val index: RoomLibraryDao
         if (updated == original) false
         else {
             store.files.writeNote(updated)
-            index.put(updated)
+            index.put(updated.copy(document = ""))
             if (original.title != updated.title || original.folderId != updated.folderId)
                 runCatching {
                     RecentNotes(store.context).changed(store.vaultId, updated, index.allFolders())
@@ -123,22 +150,39 @@ class FileLibraryDao(private val store: Store, private val index: RoomLibraryDao
         updateNote(id) { it.copy(folderId = folder, modified = System.currentTimeMillis()) }
 
     override suspend fun save(id: String, document: String, modified: Long) = mutate {
-        // Compare inside SQLite rather than reloading the previous large JSON in chunks.
-        if (index.documentMatches(id, document) != false) false
+        // Unchanged content keeps its modified time and schedules no backup.
+        if (index.noteSummary(id) == null || store.files.readDocument(id) == document) false
         else {
             val current = index.noteSummary(id) ?: return@mutate false
             val updated =
-                Note(
-                    current.id,
-                    current.folderId,
-                    current.title,
-                    modified,
-                    document,
-                    current.isTemplate,
-                )
+                Note(current.id, current.folderId, current.title, modified, document, current.isTemplate)
             store.files.writeNote(updated)
-            index.put(updated)
+            index.put(updated.copy(document = ""))
             true
+        }
+    }
+
+    /**
+     * Saves an editor scene. Encoding reuses each unchanged item's JSON; the file is replaced
+     * atomically in place and only the index's modified time changes.
+     */
+    suspend fun saveDocument(id: String, document: Document, modified: Long): Boolean {
+        store.ready.await()
+        return withContext(Dispatchers.IO) {
+            // Format new items before taking the vault lock; the write then only streams text.
+            document.items.forEach { DocumentCodec.itemText(it) }
+            val assets = document.items.mapNotNullTo(LinkedHashSet()) { it.asset }
+            var written = false
+            store.mutex.withLock {
+                val summary = index.note(id)
+                if (summary != null) {
+                    store.files.writeScene(summary.copy(modified = modified), document, assets)
+                    index.save(id, "", modified)
+                    store.changed()
+                    written = true
+                }
+            }
+            written
         }
     }
 

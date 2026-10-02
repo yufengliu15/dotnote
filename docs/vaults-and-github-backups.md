@@ -93,15 +93,15 @@ The complete operation holds the per-vault upload mutex; it acquires the root mu
 1. Read binding and token, set status to backing up, fetch branch head.
 2. If remote head equals a persisted `pending` commit, recognize a previously successful ref update whose response was lost; advance `base`/backed revision and clear pending state as processing completes.
 3. Require remote head (or empty string) to equal the accepted `base`. Otherwise stop with `RemoteChanged` before replacing remote content.
-4. Under the root mutex, instantiate/read `VaultFiles`, capture current backup revision and create a coherent snapshot in cache `upload-<uuid>`.
+4. Under the root mutex, instantiate/read `VaultFiles` (with the app-private scan cache, so unchanged notes are not re-parsed), capture current backup revision and create a coherent snapshot in cache `upload-<uuid>` (hard links where possible).
 5. Preflight **every** staged file as strictly smaller than 100 MiB. Reject the backup if any exceeds the limit; do not omit PDFs/notes.
 6. For a completely empty repository, use the Contents endpoint to create `README.md` in a bootstrap commit, then record its SHA as base. Git Data endpoints alone cannot initialize the empty repository in this implementation.
-7. Read the accepted tree. Compare each staged file's Git blob SHA against its remote entry. Upload changed blobs only; add deletion entries (`sha: null`) for remote managed files absent locally. Preserve allowed nonmanaged root documents using the base tree.
+7. Read the accepted tree. If the accepted head is the commit this device created (or last confirmed) in its previous backup, its tree listing is reused from app-private `no_backup/vault-remote/<local-id>.json` instead of two requests; a commit's tree never changes. Compare each staged file's Git blob SHA (cached by file stamp) against its remote entry. Changed text files (notes, folder markers, manifest/settings) up to 4 MiB each and 24 MiB in total are sent inline as tree `content` entries, so GitHub creates their blobs inside the tree request; PDFs and larger files are uploaded as blobs. Add deletion entries (`sha: null`) for remote managed files absent locally. Preserve allowed nonmanaged root documents using the base tree.
 8. If there are changes, create one new tree and one commit whose parent is the accepted head. Recheck the branch head before publication.
 9. Persist `pending` commit SHA/revision **before** PATCHing the branch ref with `force: false`. Convert a 422 rejection to a conflict.
-10. Update `base`, `backedRevision`, `lastBackup`, and status. If the current local revision exceeds the staged revision, report “New edits waiting for backup”; otherwise report all changes backed up. Clear pending fields and remove staging in `finally`.
+10. Record the new commit's tree listing for the next backup. Update `base`, `backedRevision`, `lastBackup`, and status. If the current local revision exceeds the staged revision, report “New edits waiting for backup”; otherwise report all changes backed up. Clear pending fields and remove staging in `finally`.
 
-An unchanged snapshot makes no extra content commit, but updates local successful-backup status/time. The first backup of an empty repository may produce two commits (README bootstrap plus vault snapshot). Staged file paths include only manifest/settings, folder markers, notes and referenced PDFs. Trash, journal, migration marker, credentials, Room, widget recency and orphan assets are excluded.
+An unchanged snapshot makes no extra content commit, but updates local successful-backup status/time. Since 0.10.0 a backup needs a fixed number of requests (head, tree, commit, head recheck, ref update, plus one per changed PDF) instead of one upload per changed note, and an unchanged automatic backup needs only the head request. The first backup of an empty repository may produce two commits (README bootstrap plus vault snapshot). Staged file paths include only manifest/settings, folder markers, notes and referenced PDFs. Trash, journal, migration marker, credentials, Room, widget recency and orphan assets are excluded.
 
 Remote changes during upload are caught by the final head check/non-force ref update. Uploading unreachable blobs/commits before a conflict is possible; they do not overwrite the branch. The pending-commit mechanism covers uncertain final ref acknowledgements. It does not fully cover every network interruption, notably an acknowledged-lost initial README bootstrap. This protocol is not a distributed transaction or a merge engine.
 
@@ -110,7 +110,7 @@ Remote changes during upload are caught by the final head check/non-force ref up
 1. Normalize the repo name, inspect repository/default branch and pin its current head SHA.
 2. Require `.dotnote/vault.json`. Reject unexpected tree files other than managed paths and root README/LICENSE/.gitignore.
 3. Require each managed blob size in `[0, 100 MiB)`, aggregate managed size at most 1 GiB, and an acceptable nontruncated tree.
-4. Download managed blobs into `files/vaults/.restore-<uuid>`, verify lengths/digests.
+4. Download managed blobs into `files/vaults/.restore-<uuid>`, up to six at a time, and verify lengths/digests. Any failed download fails the restore.
 5. `VaultCatalog.publish` validates the entire staged vault and renames it to a fresh local ID. Portable IDs, notes, folders and preferences remain intact.
 6. Store a new binding with pinned head as base, revision/backed revision zero, delay 60, and automatic enabled only if the repo is writable. Mark status restored and switch through AppState's ordinary flow.
 

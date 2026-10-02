@@ -21,15 +21,39 @@ import kotlin.math.*
 
 // Constructed exclusively by Compose AndroidView with its editor state.
 @android.annotation.SuppressLint("ViewConstructor")
+private const val PAPER = 0xfffafaf6.toInt()
+
 class NotebookView(context: Context, val state: AppState) : FrameLayout(context) {
     private val density = resources.displayMetrics.density
     private val ink = InProgressStrokesView(context)
     private var preparedPen = brush(state.color, state.strokeWidth, false)
     private var preparedMarker = brush(state.color, state.strokeWidth * 5, true)
     private var warmedSurface = false
-    private val renderer = ObjectRenderer(vectorHighlights = false)
-    private val highlightRenderer = ObjectRenderer(vectorHighlights = false)
+    private val strokeCache = StrokeCache()
+    // Draws only what is not in tiles: dragged selections, gaps and live previews.
+    private val renderer = ObjectRenderer(vectorHighlights = false, sharedStrokes = strokeCache)
     private val sceneIndex = SceneIndex()
+    private val hits = IntList()
+    private val tiles =
+        SceneTiles(
+            post = { post(it) },
+            postDelayed = { r, delay -> postDelayed(r, delay) },
+            changed = {
+                highlights.invalidate()
+                foreground.invalidate()
+            },
+            strokes = strokeCache,
+        )
+    private var dotBuffer = FloatArray(0)
+    private val livePaint =
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        }
+    private var pagesSource: List<Item>? = null
+    private var pageItems: List<Item> = emptyList()
+    private var selectionSource: Pair<List<Item>, Set<String>>? = null
+    private var selectionBox: Bounds? = null
     private val pageSource = PdfPageSource(state.store.assets)
     private val worker = Executors.newSingleThreadExecutor()
     private val cache =
@@ -85,19 +109,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
 
     private val highlights =
         object : View(context) {
-            override fun onDraw(canvas: Canvas) {
-                val matrix = screenMatrix()
-                val visible = viewport()
-                canvas.save()
-                canvas.concat(matrix)
-                highlightRenderer.drawScene(
-                    canvas,
-                    sceneIndex.visible(state.document.items, visible).highlights,
-                    matrix,
-                    highlightPreview,
-                )
-                canvas.restore()
-            }
+            override fun onDraw(canvas: Canvas) = drawMarkers(canvas)
         }
     private val foreground =
         object : View(context) {
@@ -311,6 +323,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
         if (disposed) return
         settle()
         disposed = true
+        tiles.release()
         worker.execute { pageSource.close() }
         worker.shutdown()
         cache.evictAll()
@@ -361,93 +374,352 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
     private fun world(e: MotionEvent, index: Int) =
         state.document.camera.world(Pt(e.getX(index) / density, e.getY(index) / density))
 
-    private fun selectionBounds(): Bounds? =
-        if (state.selection.isEmpty()) null
-        else
-            state.document.items
-                .filter { it.id in state.selection }
-                .map { it.bounds }
-                .reduceOrNull { a, b -> a.union(b) }
+    private fun selectionBounds(): Bounds? {
+        val selection = state.selection
+        if (selection.isEmpty()) return null
+        val items = state.document.items
+        selectionSource?.let { (i, s) -> if (i === items && s === selection) return selectionBox }
+        var box: Bounds? = null
+        for (item in items) if (item.id in selection) box = box?.union(item.bounds) ?: item.bounds
+        selectionSource = items to selection
+        selectionBox = box
+        return box
+    }
+
+    /** Items drawn live instead of from tiles while a selection is dragged or resized. */
+    private fun excluded(): Set<String> =
+        if ((moving || resizing) && pointer >= 0) state.selection else emptySet()
+
+    /** Selection being moved, rasterized once at the start of the drag and then translated. */
+    private class Sprite(
+        val key: Any,
+        val ink: Bitmap?,
+        val markers: Bitmap?,
+        val left: Float,
+        val top: Float,
+        val scale: Float,
+    )
+
+    private var sprite: Sprite? = null
+
+    private fun dragSprite(): Sprite? {
+        if (!moving || pointer < 0 || state.selection.isEmpty()) {
+            sprite = null
+            return null
+        }
+        val before = gestureBefore ?: return null
+        val scale = state.document.camera.zoom * density
+        val key = Triple(before, state.selection, scale)
+        sprite?.let { if (it.key == key) return it }
+        val selected = before.filter { it.id in state.selection && it.kind != "PDF" }
+        if (selected.isEmpty()) return null
+        var box = selected[0].bounds
+        selected.forEach { box = box.union(it.bounds) }
+        box = box.outset(2f / scale)
+        val w = kotlin.math.ceil(box.width * scale).toInt()
+        val h = kotlin.math.ceil(box.height * scale).toInt()
+        // Huge selections are drawn live instead of holding a large bitmap.
+        if (w <= 0 || h <= 0 || w.toLong() * h > width.toLong() * height * 2) return null
+        fun render(markers: Boolean): Bitmap? {
+            val list =
+                selected.filter { (it.kind == "HIGHLIGHTER") == markers }.ifEmpty { return null }
+            val bitmap = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+            val c = Canvas(bitmap)
+            c.scale(scale, scale)
+            c.translate(-box.left, -box.top)
+            if (markers) {
+                renderer.drawMarkerFills(c, list, list.map { it.color }.distinct().toIntArray())
+                // Pre-faded, so it can be drawn without the marker layer.
+                SceneTiles.fade(c)
+            } else {
+                val m = Matrix(c.matrix)
+                list.forEach { renderer.draw(c, it, m) }
+            }
+            return bitmap
+        }
+        return Sprite(key, render(false), render(true), box.left, box.top, scale).also { sprite = it }
+    }
+
+    /** Draws the dragged selection's sprite at the current drag offset; false if unavailable. */
+    private fun drawSprite(canvas: Canvas, markers: Boolean): Boolean {
+        val s = dragSprite() ?: return false
+        val bitmap = (if (markers) s.markers else s.ink) ?: return true
+        val c = state.document.camera
+        val x = (s.left + last.x - start.x) * s.scale + c.x * density
+        val y = (s.top + last.y - start.y) * s.scale + c.y * density
+        canvas.drawBitmap(bitmap, x, y, spritePaint)
+        return true
+    }
+
+    private val spritePaint = Paint(Paint.FILTER_BITMAP_FLAG)
+
+    private fun syncTiles() {
+        tiles.update(state.document.items, excluded(), handoffs.values)
+    }
+
+    private fun pages(items: List<Item>): List<Item> {
+        if (pagesSource !== items) {
+            pagesSource = items
+            pageItems = items.filter { it.kind == "PDF" }
+        }
+        return pageItems
+    }
+
+    /** Draws scene items intersecting [area] directly; used for tiles that are not ready yet. */
+    private fun drawVector(canvas: Canvas, area: Bounds, markers: Boolean, complete: Boolean) {
+        val items = state.document.items
+        val skip = excluded()
+        val hidden = handoffs.values
+        sceneIndex.query(items, area, hits)
+        val matrix = screenMatrix()
+        canvas.save()
+        canvas.concat(matrix)
+        if (markers) {
+            val list = ArrayList<Item>()
+            for (k in 0 until hits.size) {
+                val item = items[hits[k]]
+                if (item.kind == "HIGHLIGHTER" && item.id !in skip && item.id !in hidden)
+                    list.add(item)
+            }
+            renderer.drawMarkerFills(canvas, list, tiles.colorOrder)
+        } else {
+            for (k in 0 until hits.size) {
+                val item = items[hits[k]]
+                if (
+                    item.kind != "HIGHLIGHTER" &&
+                        item.kind != "PDF" &&
+                        item.id !in skip &&
+                        item.id !in hidden &&
+                        (complete || item.ink == null || strokeCache.get(item) != null)
+                )
+                    renderer.draw(canvas, item, matrix)
+            }
+        }
+        canvas.restore()
+    }
+
+    private fun drawMarkers(canvas: Canvas) {
+        syncTiles()
+        val live = highlightPreview
+        val skip = excluded()
+        val dragged =
+            if (skip.isEmpty()) emptyList()
+            else state.document.items.filter { it.kind == "HIGHLIGHTER" && it.id in skip }
+        if (!tiles.hasMarkers && live == null && dragged.isEmpty()) return
+        val camera = state.document.camera
+        // Finished tiles (and a moved selection's pre-faded sprite) draw without a layer.
+        val spriteReady = dragged.isEmpty() || (moving && dragSprite() != null)
+        if (live == null && spriteReady && tiles.drawTranslucent(canvas, camera, density, width, height)) {
+            if (dragged.isNotEmpty()) drawSprite(canvas, markers = true)
+            return
+        }
+        // Opaque fills share ONE translucent layer, so overlaps never darken.
+        val layer = canvas.saveLayerAlpha(null, 85)
+        if (tiles.hasMarkers)
+            tiles.draw(canvas, state.document.camera, density, width, height, true) {
+                c,
+                area,
+                complete ->
+                drawVector(c, area, markers = true, complete = complete)
+            }
+        if (dragged.isNotEmpty() || live != null) {
+            canvas.save()
+            canvas.concat(screenMatrix())
+            if (dragged.isNotEmpty())
+                renderer.drawMarkerFills(
+                    canvas,
+                    dragged,
+                    dragged.map { it.color }.distinct().toIntArray(),
+                )
+            live?.draw(canvas, livePaint)
+            canvas.restore()
+        }
+        canvas.restoreToCount(layer)
+    }
 
     private fun drawContent(canvas: Canvas, background: Boolean) {
-        if (background) canvas.drawColor(0xfffafaf6.toInt())
+        if (!background) {
+            drawInk(canvas)
+            return
+        }
         val doc = state.document
         val visible = viewport()
-        val scene = sceneIndex.visible(doc.items, visible)
+        val matrix = screenMatrix()
+        val z = doc.camera.zoom
+        var spacing = 24f
+        while (spacing * z < 12) spacing *= 2
+        val cached = doc.dots && drawPaper(canvas, spacing * z * density)
+        if (!cached) canvas.drawColor(PAPER)
+        canvas.save()
+        canvas.concat(matrix)
+        if (doc.dots && !cached) {
+            // One batched draw call instead of one call per dot.
+            val x0 = floor(visible.left / spacing) * spacing
+            val y0 = floor(visible.top / spacing) * spacing
+            val columns = max(0, ceil((visible.right - x0) / spacing).toInt())
+            val rows = max(0, ceil((visible.bottom - y0) / spacing).toInt())
+            val count = columns.toLong() * rows
+            if (count in 1..40_000) {
+                val needed = (count * 2).toInt()
+                if (dotBuffer.size < needed) dotBuffer = FloatArray(needed)
+                var n = 0
+                for (c in 0 until columns) {
+                    val x = x0 + c * spacing
+                    for (r in 0 until rows) {
+                        dotBuffer[n++] = x
+                        dotBuffer[n++] = y0 + r * spacing
+                    }
+                }
+                paint.color = 0xffcdd3ca.toInt()
+                paint.style = Paint.Style.FILL
+                paint.strokeCap = Paint.Cap.ROUND
+                paint.strokeWidth = 2f / z
+                canvas.drawPoints(dotBuffer, 0, n, paint)
+                paint.strokeCap = Paint.Cap.BUTT
+            }
+        }
+        pages(doc.items).forEach { item ->
+            val b = item.bounds
+            if (!b.intersects(visible)) return@forEach
+            paint.color = Color.WHITE
+            canvas.drawRect(b.rect(), paint)
+            val desired = (b.width * z * density).toInt().coerceIn(128, 2048)
+            val target =
+                when {
+                    desired <= 512 -> 512
+                    desired <= 1024 -> 1024
+                    else -> 2048
+                }
+            val key = "${item.asset}:${item.page}:$target"
+            val bitmap = cache.get(key)
+            if (bitmap != null) {
+                paint.isFilterBitmap = true
+                canvas.drawBitmap(bitmap, null, b.rect(), paint)
+            } else {
+                paint.color = 0xff72796f.toInt()
+                paint.textSize = 16f
+                canvas.drawText(
+                    if (key in failed) "Page unavailable" else "Loading page ${item.page+1}…",
+                    b.left + 24,
+                    b.top + 36,
+                    paint,
+                )
+                if (!disposed && key !in failed && pending.add(key))
+                    worker.execute {
+                        val result = runCatching { pageSource.render(item, target) }
+                        post {
+                            pending.remove(key)
+                            if (!disposed) {
+                                result.fold(
+                                    { cache.put(key, it) },
+                                    {
+                                        failed.add(key)
+                                        state.message =
+                                            "A PDF page could not be read: ${it.message}"
+                                    },
+                                )
+                                content.invalidate()
+                            }
+                        }
+                    }
+            }
+            paint.style = Paint.Style.STROKE
+            paint.color = 0xffdadfd4.toInt()
+            paint.strokeWidth = 1f / z
+            canvas.drawRect(b.rect(), paint)
+            paint.style = Paint.Style.FILL
+        }
+        canvas.restore()
+    }
+
+    private var paperBitmap: Bitmap? = null
+    private var paperPeriod = 0f
+    private var periodSeen = 0f
+    private var periodChangedAt = 0L
+
+    /**
+     * Paper and dots repeat every [period] pixels, so one cached image slightly larger than the
+     * view is blitted at the camera's phase (rounded to whole pixels; every dot shifts together by
+     * under half a pixel). It is rebuilt only when the dot period changes and stays unchanged for
+     * a moment, so a pinch keeps using batched point drawing.
+     */
+    private fun drawPaper(canvas: Canvas, period: Float): Boolean {
+        if (width <= 0 || height <= 0 || period < 4f) return false
+        val now = android.os.SystemClock.uptimeMillis()
+        if (period != periodSeen) {
+            periodSeen = period
+            periodChangedAt = now
+        }
+        var bitmap = paperBitmap
+        if (bitmap == null || paperPeriod != period || bitmap.width < width + period + 2 ||
+            bitmap.height < height + period + 2) {
+            if (now - periodChangedAt < 150) {
+                postInvalidateDelayed(160)
+                return false
+            }
+            val w = width + ceil(period).toInt() + 2
+            val h = height + ceil(period).toInt() + 2
+            bitmap =
+                bitmap?.takeIf { it.width == w && it.height == h }
+                    ?: Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { paperBitmap = it }
+            bitmap.setHasAlpha(false)
+            val c = Canvas(bitmap)
+            c.drawColor(PAPER)
+            paint.color = 0xffcdd3ca.toInt()
+            paint.style = Paint.Style.FILL
+            var x = 0f
+            while (x < w + period) {
+                var y = 0f
+                while (y < h + period) {
+                    c.drawCircle(x, y, density, paint)
+                    y += period
+                }
+                x += period
+            }
+            paperPeriod = period
+            bitmap.prepareToDraw()
+        }
+        val c = state.document.camera
+        fun phase(offset: Float): Int {
+            val m = ((offset % period) + period) % period
+            return (m - period).roundToInt()
+        }
+        canvas.drawBitmap(bitmap, phase(c.x * density).toFloat(), phase(c.y * density).toFloat(), null)
+        return true
+    }
+
+    private fun drawInk(canvas: Canvas) {
+        val started = System.nanoTime()
+        try {
+            drawInkLayer(canvas)
+        } finally {
+            val ms = (System.nanoTime() - started) / 1e6
+            if (BuildConfig.DEBUG && ms > 50) android.util.Log.i("DotnoteFrame", "ink layer $ms ms")
+        }
+    }
+
+    private fun drawInkLayer(canvas: Canvas) {
+        syncTiles()
+        val doc = state.document
+        tiles.draw(canvas, doc.camera, density, width, height, false) { c, area, complete ->
+            drawVector(c, area, markers = false, complete = complete)
+        }
         val matrix = screenMatrix()
         val z = doc.camera.zoom
         canvas.save()
         canvas.concat(matrix)
-        if (background) {
-            if (doc.dots) {
-                var spacing = 24f
-                while (spacing * z < 12) spacing *= 2
-                paint.color = 0xffcdd3ca.toInt()
-                paint.style = Paint.Style.FILL
-                var x = floor(visible.left / spacing) * spacing
-                while (x < visible.right) {
-                    var y = floor(visible.top / spacing) * spacing
-                    while (y < visible.bottom) {
-                        canvas.drawCircle(x, y, 1f / z, paint)
-                        y += spacing
-                    }
-                    x += spacing
-                }
-            }
-            scene.pages.forEach { item ->
-                val b = item.bounds
-                paint.color = Color.WHITE
-                canvas.drawRect(b.rect(), paint)
-                val desired = (b.width * z * density).toInt().coerceIn(128, 2048)
-                val target =
-                    when {
-                        desired <= 512 -> 512
-                        desired <= 1024 -> 1024
-                        else -> 2048
-                    }
-                val key = "${item.asset}:${item.page}:$target"
-                val bitmap = cache.get(key)
-                if (bitmap != null) {
-                    paint.isFilterBitmap = true
-                    canvas.drawBitmap(bitmap, null, b.rect(), paint)
-                } else {
-                    paint.color = 0xff72796f.toInt()
-                    paint.textSize = 16f
-                    canvas.drawText(
-                        if (key in failed) "Page unavailable" else "Loading page ${item.page+1}…",
-                        b.left + 24,
-                        b.top + 36,
-                        paint,
-                    )
-                    if (!disposed && key !in failed && pending.add(key))
-                        worker.execute {
-                            val result = runCatching { pageSource.render(item, target) }
-                            post {
-                                pending.remove(key)
-                                if (!disposed) {
-                                    result.fold(
-                                        { cache.put(key, it) },
-                                        {
-                                            failed.add(key)
-                                            state.message =
-                                                "A PDF page could not be read: ${it.message}"
-                                        },
-                                    )
-                                    content.invalidate()
-                                }
-                            }
-                        }
-                }
-                paint.style = Paint.Style.STROKE
-                paint.color = 0xffdadfd4.toInt()
-                paint.strokeWidth = 1f / z
-                canvas.drawRect(b.rect(), paint)
-                paint.style = Paint.Style.FILL
-            }
+        val skip = excluded()
+        if (skip.isNotEmpty()) {
+            // A moved selection blits its sprite (screen space); resizing draws vectors.
             canvas.restore()
-            return
+            val sprited = moving && drawSprite(canvas, markers = false)
+            canvas.save()
+            canvas.concat(matrix)
+            if (!sprited)
+                for (item in doc.items)
+                    if (item.id in skip && item.kind != "HIGHLIGHTER" && item.kind != "PDF")
+                        renderer.draw(canvas, item, matrix)
         }
-        renderer.drawScene(canvas, scene.foreground, matrix, hiddenIds = handoffs.values)
         shape?.let { renderer.draw(canvas, it, matrix) }
         if (lasso.size > 1) {
             paint.style = Paint.Style.STROKE
@@ -457,7 +729,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
             val path =
                 Path().apply {
                     moveTo(lasso[0].x, lasso[0].y)
-                    lasso.drop(1).forEach { lineTo(it.x, it.y) }
+                    for (i in 1 until lasso.size) lineTo(lasso[i].x, lasso[i].y)
                     close()
                 }
             canvas.drawPath(path, paint)
@@ -728,19 +1000,34 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
         if (released) {
             val before = gestureBefore ?: state.document.items
             if (activeTool == Tool.LASSO && !moving && !resizing) {
+                val items = state.document.items
                 val selected =
                     if (
                         hypot(p.x - start.x, p.y - start.y) < 8f / state.document.camera.zoom &&
                             lasso.size < 5
                     ) {
-                        state.document.items
-                            .lastOrNull { hitItem(it, p, 12f / state.document.camera.zoom) }
-                            ?.let { setOf(it.id) } ?: emptySet()
-                    } else
-                        state.document.items
-                            .filter { item -> lassoHits(item, lasso) }
-                            .map(Item::id)
-                            .toSet()
+                        val radius = 12f / state.document.camera.zoom
+                        sceneIndex.query(items, Bounds(p.x, p.y, p.x, p.y).outset(radius), hits)
+                        var found: Item? = null
+                        for (k in hits.size - 1 downTo 0) {
+                            val item = items[hits[k]]
+                            if (hitItem(item, p, radius)) {
+                                found = item
+                                break
+                            }
+                        }
+                        found?.let { setOf(it.id) } ?: emptySet()
+                    } else if (lasso.size < 3) emptySet()
+                    else {
+                        // Only items overlapping the loop's bounds can be inside it.
+                        sceneIndex.query(items, Bounds.of(lasso), hits)
+                        val ids = LinkedHashSet<String>()
+                        for (k in 0 until hits.size) {
+                            val item = items[hits[k]]
+                            if (lassoHits(item, lasso)) ids.add(item.id)
+                        }
+                        ids
+                    }
                 state.selection = selected
             } else if (shape != null) {
                 if (hypot(p.x - start.x, p.y - start.y) > 2f / state.document.camera.zoom)
@@ -761,19 +1048,27 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
         val radius = 14f / state.document.camera.zoom
         val steps =
             max(1, ceil(hypot(b.x - a.x, b.y - a.y) / (radius * .5f)).toInt()).coerceAtMost(1000)
-        state.preview(
-            state.document.items.filterNot { item ->
-                !item.locked &&
-                    !item.image &&
-                    (0..steps).any { s ->
-                        hitItem(
-                            item,
-                            Pt(a.x + (b.x - a.x) * s / steps, a.y + (b.y - a.y) * s / steps),
-                            radius,
-                        )
-                    }
-            }
-        )
+        val items = state.document.items
+        // Only items near the eraser path are tested.
+        val area = Bounds(min(a.x, b.x), min(a.y, b.y), max(a.x, b.x), max(a.y, b.y)).outset(radius)
+        sceneIndex.query(items, area, hits)
+        var erased: java.util.IdentityHashMap<Item, Unit>? = null
+        for (k in 0 until hits.size) {
+            val item = items[hits[k]]
+            if (item.locked || item.image) continue
+            if (
+                (0..steps).any { s ->
+                    hitItem(
+                        item,
+                        Pt(a.x + (b.x - a.x) * s / steps, a.y + (b.y - a.y) * s / steps),
+                        radius,
+                    )
+                }
+            )
+                (erased ?: java.util.IdentityHashMap<Item, Unit>().also { erased = it })[item] = Unit
+        }
+        val removed = erased ?: return
+        state.preview(items.filterNot { removed.containsKey(it) })
     }
 
     private fun cancelGesture(e: MotionEvent) {
@@ -790,6 +1085,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
         pointer = -1
         moving = false
         resizing = false
+        sprite = null
         refresh()
     }
 

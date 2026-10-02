@@ -162,7 +162,7 @@ This is a personal-use build. No typed text, handwriting recognition, cloud sync
 
 Highlighter colors share one translucent layer below pen/shape ink. Different marker colors replace rather than darken one another where they overlap; the most recently used color is on top. Existing saved highlights use this rendering too.
 
-The canvas uses a shared spatial grid to find visible objects, retains visible stroke geometry plus a bounded offscreen cache, and caches PDF pages. Index updates after edits and very dense visible scenes still scale with object count. Very large notebooks need further profiling on the tablet. “Infinite” means no imposed page boundary, with the practical limits of memory and floating-point coordinates. PDF export is capped at 500 pages; backup restore at 1 GiB; individual local PDF imports at 512 MiB. Vault reading permits 10,000 entries, fewer than 64 directory levels, 64 MiB per note and 256 MiB total note JSON. Filesystem path/name limits also apply.
+The canvas draws finished content from cached raster tiles (up to 96 MB) rendered on a background thread, finds nearby objects with a spatial grid, and caches PDF pages. Right after opening a dense note, tiles appear over a fraction of a second; strokes not yet tessellated fill in with their tile. Physical-tablet performance has not been measured. “Infinite” means no imposed page boundary, with the practical limits of memory and floating-point coordinates. PDF export is capped at 500 pages; backup restore at 1 GiB; individual local PDF imports at 512 MiB. Vault reading permits 10,000 entries, fewer than 64 directory levels, 64 MiB per note and 256 MiB total note JSON. Filesystem path/name limits also apply.
 
 ## Verification
 

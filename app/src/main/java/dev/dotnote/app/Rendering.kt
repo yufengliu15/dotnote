@@ -143,7 +143,41 @@ class LiveHighlight(val color: Int, val width: Float) {
     }
 }
 
-class ObjectRenderer(private val vectorHighlights: Boolean = true) {
+/**
+ * Thread-safe LRU of native Ink strokes shared by the UI and tile threads. Ink strokes are
+ * immutable, so one tessellation serves every renderer.
+ */
+class StrokeCache(private val limit: Int = 3000) {
+    private val map = LinkedHashMap<String, Pair<Item, Stroke>>(256, .75f, true)
+
+    @Synchronized
+    fun get(item: Item): Stroke? =
+        map[item.id]
+            ?.takeIf { (previous, _) ->
+                previous === item ||
+                    (previous.color == item.color &&
+                        previous.width == item.width &&
+                        previous.ink == item.ink)
+            }
+            ?.second
+
+    @Synchronized
+    fun put(item: Item, stroke: Stroke) {
+        map[item.id] = item to stroke
+        if (map.size > limit) {
+            val iterator = map.entries.iterator()
+            while (map.size > limit && iterator.hasNext()) {
+                iterator.next()
+                iterator.remove()
+            }
+        }
+    }
+}
+
+class ObjectRenderer(
+    private val vectorHighlights: Boolean = true,
+    private val sharedStrokes: StrokeCache? = null,
+) {
     private var cachedScene: List<Item>? = null
     private var foreground: List<Item> = emptyList()
     private var cachedHighlights: List<Item> = emptyList()
@@ -274,6 +308,22 @@ class ObjectRenderer(private val vectorHighlights: Boolean = true) {
             .also { highlightPaths.put(item.id, item to it) }
     }
 
+    /**
+     * Opaque marker fills for one tile or region, grouped by color in [order] (the scene-wide
+     * last-use order), exactly as the interactive layer groups them. The caller composites the
+     * result once at marker opacity.
+     */
+    fun drawMarkerFills(canvas: Canvas, items: List<Item>, order: IntArray) {
+        for (color in order) {
+            for (item in items) if (item.color == color && item.kind == "HIGHLIGHTER") {
+                val outline = highlightOutline(item)
+                paint.style = Paint.Style.FILL
+                paint.color = color or 0xff000000.toInt()
+                canvas.drawPath(outline, paint)
+            }
+        }
+    }
+
     fun draw(canvas: Canvas, item: Item, worldToScreen: Matrix) {
         if (item.kind == "HIGHLIGHTER") {
             drawScene(canvas, listOf(item), worldToScreen)
@@ -285,15 +335,17 @@ class ObjectRenderer(private val vectorHighlights: Boolean = true) {
             paint.color = item.color
             canvas.drawPath(fillPath(item), paint)
         } else if (item.ink != null) {
-            val cached = strokes[item.id]
-            val stroke =
-                cached
+            val shared = sharedStrokes
+            val cached = if (shared != null) shared.get(item) else
+                strokes[item.id]
                     ?.takeIf { (previous, _) ->
                         previous.color == item.color &&
                             previous.width == item.width &&
                             previous.ink == item.ink
                     }
                     ?.second
+            val stroke =
+                cached
                     ?: Stroke(
                             brush(item.color, item.width, item.kind == "HIGHLIGHTER"),
                             StrokeInputBatch.decode(
@@ -302,7 +354,8 @@ class ObjectRenderer(private val vectorHighlights: Boolean = true) {
                         )
                         .also {
                             strokeBuildCount++
-                            strokes.put(item.id, item to it)
+                            if (shared != null) shared.put(item, it)
+                            else strokes.put(item.id, item to it)
                         }
             val local = item.transform.matrix()
             canvas.concat(local)
@@ -459,6 +512,8 @@ object PdfFiles {
             "This spans over 500 pages. Export the visible area instead."
         }
         val objects = ObjectRenderer()
+        val index = SceneIndex()
+        val hits = IntList()
         PdfPageSource(store.assets).use { source ->
             PdfDocument().useDocument { pdf ->
                 var number = 1
@@ -496,8 +551,11 @@ object PdfFiles {
                     canvas.save()
                     canvas.concat(matrix)
                     canvas.clipRect(tile.rect())
-                    doc.items
-                        .filter { it.kind == "PDF" && it.bounds.intersects(tile) }
+                    // Only items on this page tile are visited.
+                    index.query(doc.items, tile, hits)
+                    val onTile = List(hits.size) { doc.items[hits[it]] }
+                    onTile
+                        .filter { it.kind == "PDF" }
                         .forEach { item ->
                             val bitmap = source.render(item, 1600)
                             canvas.drawBitmap(
@@ -510,7 +568,7 @@ object PdfFiles {
                         }
                     objects.drawScene(
                         canvas,
-                        doc.items.filter { it.kind != "PDF" && it.bounds.intersects(tile) },
+                        onTile.filter { it.kind != "PDF" },
                         matrix,
                     )
                     canvas.restore()

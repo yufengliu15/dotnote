@@ -161,14 +161,16 @@ class AppState(application: Application) : AndroidViewModel(application) {
     )
 
     private val queue = Channel<Save>(Channel.UNLIMITED)
+    // The scene last written per note; an identical immutable Document needs no write.
+    private val lastSaved = HashMap<Pair<Store, String>, Document>()
     private val openings = Channel<Pair<Store, String>>(Channel.UNLIMITED)
 
     init {
         viewModelScope.launch(Dispatchers.IO) {
             for ((storage, id) in openings) {
                 runCatching {
-                    storage.mutex.withLock {
-                        storage.dao.note(id)?.let { latest ->
+                    storage.dao.summary(id)?.let { latest ->
+                        storage.mutex.withLock {
                             RecentNotes(getApplication())
                                 .opened(storage.vaultId, latest, storage.dao.allFolders())
                         }
@@ -215,37 +217,50 @@ class AppState(application: Application) : AndroidViewModel(application) {
                 }
         }
         viewModelScope.launch {
-            for (save in queue) {
-                // Obsolete background snapshots need no encoding or disk write. Flush barriers
-                // are never dropped, and requests for other notes/vaults keep their destination.
-                if (
-                    save.done == null &&
-                        store === save.storage &&
-                        note?.id == save.id &&
-                        save.sequence != saveSequence
-                )
-                    continue
-                val ok =
-                    try {
-                        withContext(Dispatchers.IO) {
-                            save.storage.dao.save(
-                                save.id,
-                                DocumentCodec.encode(save.document),
-                                System.currentTimeMillis(),
-                            )
-                        }
-                        if (
+            for (head in queue) {
+                // Only the newest scene of each note needs writing. Saves queued while a large
+                // note was being written collapse into one write instead of one per stroke.
+                val batch = mutableListOf(head)
+                while (true) batch.add(queue.tryReceive().getOrNull() ?: break)
+                val latest = LinkedHashMap<Pair<Store, String>, Save>()
+                batch.forEach { latest[it.storage to it.id] = it }
+                for ((key, save) in latest) {
+                    val group = batch.filter { it.storage === save.storage && it.id == save.id }
+                    // Obsolete background snapshots need no encoding or disk write. Flush
+                    // barriers are never dropped, and other notes/vaults keep their destination.
+                    if (
+                        group.all { it.done == null } &&
                             store === save.storage &&
-                                note?.id == save.id &&
-                                save.sequence == saveSequence
-                        )
-                            saved = true
-                        true
-                    } catch (e: Exception) {
-                        message = "Save failed: ${e.message}. Tap the save indicator to retry."
-                        false
-                    }
-                save.done?.complete(ok)
+                            note?.id == save.id &&
+                            save.sequence != saveSequence
+                    )
+                        continue
+                    val ok =
+                        try {
+                            if (lastSaved[key] !== save.document) {
+                                save.storage.dao.saveDocument(
+                                    save.id,
+                                    save.document,
+                                    System.currentTimeMillis(),
+                                )
+                                if (store === save.storage && note?.id == save.id)
+                                    lastSaved[key] = save.document
+                                else lastSaved.remove(key)
+                            }
+                            if (
+                                store === save.storage &&
+                                    note?.id == save.id &&
+                                    save.sequence == saveSequence
+                            )
+                                saved = true
+                            true
+                        } catch (e: Exception) {
+                            if (e is CancellationException) throw e
+                            message = "Save failed: ${e.message}. Tap the save indicator to retry."
+                            false
+                        }
+                    group.forEach { it.done?.complete(ok) }
+                }
             }
         }
     }
@@ -409,7 +424,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
     fun setTemplate(enabled: Boolean) = runAction {
         if (!flush()) return@runAction
         val current = note ?: return@runAction
-        val latest = store.dao.note(current.id) ?: return@runAction
+        val latest = store.dao.summary(current.id) ?: return@runAction
         val updated = latest.copy(isTemplate = enabled, modified = System.currentTimeMillis())
         store.dao.put(updated)
         note = updated
@@ -501,7 +516,22 @@ class AppState(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun open(id: String) = runAction { if (flush()) store.dao.note(id)?.let { openNow(it) } }
+    fun open(id: String) = runAction {
+        val start = android.os.SystemClock.elapsedRealtimeNanos()
+        if (flush()) {
+            val flushed = android.os.SystemClock.elapsedRealtimeNanos()
+            store.dao.note(id)?.let {
+                val read = android.os.SystemClock.elapsedRealtimeNanos()
+                openNow(it)
+                if (BuildConfig.DEBUG)
+                    android.util.Log.i(
+                        "DotnoteOpen",
+                        "flush=${(flushed - start) / 1e6} ms, read=${(read - flushed) / 1e6} ms, " +
+                            "decode+apply=${(android.os.SystemClock.elapsedRealtimeNanos() - read) / 1e6} ms",
+                    )
+            }
+        }
+    }
 
     private suspend fun openNow(value: Note) {
         val decoded = withContext(Dispatchers.IO) { DocumentCodec.decode(value.document) }
@@ -509,6 +539,8 @@ class AppState(application: Application) : AndroidViewModel(application) {
         textEdit = null
         folderId = value.folderId
         document = decoded
+        lastSaved.clear()
+        lastSaved[store to value.id] = decoded
         history = History()
         selection = emptySet()
         revision++
@@ -517,15 +549,25 @@ class AppState(application: Application) : AndroidViewModel(application) {
         openings.trySend(store to value.id)
     }
 
+    private var autosaveAt = 0L
+
     private fun scheduleSave() {
-        val id = note?.id ?: return
-        autosaveJob?.cancel()
+        note?.id ?: return
         saved = false
-        val snapshot = Save(store, id, document, ++saveSequence)
+        saveSequence++
+        // One pending autosave restarted by moving its deadline, not a new coroutine for every
+        // pan frame or stroke. It captures the scene current when it fires.
+        autosaveAt = android.os.SystemClock.uptimeMillis() + 3000
+        if (autosaveJob?.isActive == true) return
         autosaveJob =
             viewModelScope.launch {
-                delay(3000)
-                queue.send(snapshot)
+                while (true) {
+                    val wait = autosaveAt - android.os.SystemClock.uptimeMillis()
+                    if (wait <= 0) break
+                    delay(wait)
+                }
+                val id = note?.id ?: return@launch
+                queue.send(Save(store, id, document, saveSequence))
             }
     }
 

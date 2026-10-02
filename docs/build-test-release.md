@@ -71,7 +71,7 @@ Tests are in [`app/src/test/java/dev/dotnote/app/`](../app/src/test/java/dev/dot
 
 These are ordinary JUnit tests with a JVM `org.json` dependency. Native Android Ink rendering, actual Room/WorkManager, Views and PDF APIs require instrumentation; a passing JVM suite cannot establish those behaviors.
 
-## Test inventory: 48 Android tests
+## Test inventory: 58 Android tests
 
 Tests are in [`app/src/androidTest/java/dev/dotnote/app/`](../app/src/androidTest/java/dev/dotnote/app/).
 
@@ -92,6 +92,9 @@ Tests are in [`app/src/androidTest/java/dev/dotnote/app/`](../app/src/androidTes
 | `HighlighterPerformanceTest` | 2 | Live overlap/chunk opacity, pen layering, reopen/cancel rendering; 2,400-point live-stroke software frame budget |
 | `VectorPerformanceTest` | 2 | 900 native strokes reuse meshes and preserve pixels across redraws; zoom/transforms reuse geometry; recolor/input edits invalidate; handoff visibility and shape transforms |
 | `InkStartupTest` | 1 | `firstPenStrokeIsVisibleBeforePenUp`: first-stroke dispatch and screenshot visibility before ACTION_UP, plus no phantom warmup item |
+| `TileRenderingTest` | 1 | Tiled frames equal direct vector rendering for the first (fallback) frame, finished tiles, whole-pixel pans, appends, erasing (in-place repaint), marker re-stacking, drag exclusion/drop and a settled zoom level |
+| `CodecCompatibilityTest` | 1 | The direct encoder writes byte-identical text to Android org.json (escapes, floats, negative zero, Unicode); decoding of org.json and pretty-printed files |
+| `PerformanceBenchmarkTest` | 8 | Before/after workloads (compile against 0.9.1 too): dense-note pan, pinch, pen-up commit/save/burst, eraser, lasso, selection drag, opening 1,200/3,000-stroke notes, vault startup cold/warm, GitHub backup/restore with 80 ms simulated latency. Logs `BENCH` lines under `DotnoteBench` |
 
 `QualityOfLifeTest` adds two Android tests for a three-second resettable edit debounce, immediate large-note flush, no delayed duplicate, file-authoritative reopen, bucket pixels, marker opacity and exported PDF coverage. `QualityOfLifeUiTest` adds a real-pointer test for held note/folder drops in both directions, palette-to-Pen activation and horizontal Fill choices, a real finger fill tap, undo/redo and close.
 
