@@ -50,7 +50,7 @@ Outputs include:
 
 Use `adb devices` to confirm the intended target; pass `-s <serial>` when more than one device is attached. Installing instrumentation tests does not run them. Never uninstall/clear production app data just to solve a build or signing mismatch; that deletes local vaults. Export first if a destructive device reset is actually necessary.
 
-Local snapshots remain debug-signed personal-test builds. An explicitly signed non-debuggable release build and manually triggered GitHub Actions workflow are now configured; activation requires committing/pushing the workflow and setting the existing compatible signing key as protected secrets. There is no Play Store pipeline. See [app updates and free distribution](app-updates.md).
+Local snapshots remain debug-signed personal-test builds. An explicitly signed non-debuggable release build and manually triggered GitHub Actions workflow are now configured; the release environment restricts the configured signing secrets to main, and workflow dispatch defaults to validation only. There is no Play Store pipeline. See [app updates and free distribution](app-updates.md).
 
 ## Test inventory: 44 JVM tests
 

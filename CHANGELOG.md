@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.1 — 2026-10-01
+
+- Activate the GitHub release pipeline with a validation-only default, explicit publishing option, protected signing secrets and downloadable validation artifacts. Preserve earlier snapshot version records and use a clean committed source tree. Android versionCode: 20.
+
 ## 0.11.0 — 2026-10-01
 
 - Added manual in-app update checks, optional preview releases, bounded APK downloads, hash/package/version/signing verification, and Android installer handoff after saving notes. No extra updater app or account is required.

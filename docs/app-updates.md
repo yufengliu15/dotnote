@@ -25,7 +25,7 @@ Do not paste secrets into issues, logs, source, or chat. Use protected environme
 
 ## Publishing
 
-The manual **Release Dotnote** GitHub Actions workflow runs only against `main`. Once this workflow and source changes are committed/pushed and signing secrets configured, use **Actions → Release Dotnote → Run workflow**. This action is the explicit publishing trigger; ordinary commits do not publish APKs.
+The manual **Release Dotnote** GitHub Actions workflow runs only against `main`. Use **Actions → Release Dotnote → Run workflow** on `main`. Leave **Publish release** unchecked for a validation-only run, or check it to publish after every check passes. Ordinary commits do not publish APKs. Validation artifacts are retained for seven days. The release environment permits only `main`; signing credentials are configured as environment secrets.
 
 Before running it, update `app/build.gradle.kts` with a fresh display version and strictly increasing code, update CHANGELOG, README, documentation index and VALIDATION with actual local checks. Include all intended source changes in reviewed commits. A failed delivery must not be disguised by replacing a historical APK.
 

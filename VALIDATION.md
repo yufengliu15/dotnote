@@ -1,3 +1,13 @@
+# 0.11.1 release automation validation
+
+App version **0.11.1 / code 20**, October 1, 2026. This change advances the delivered 0.11.0 snapshot without altering updater or notebook behavior. The setup uses separate clean commits for earlier storage/preview work and the updater; unrelated TODO edits and transfer artifacts are excluded.
+
+- Local Python release-history tests, Python syntax and workflow YAML checks pass. The existing 0.11.0 runtime evidence below covers unchanged app behavior; hosted build/test/lint/package results will be recorded by the GitHub Actions run for this exact commit.
+- Protected `release` environment secrets preserve the installed signing identity and are available only to main. Workflow dispatch defaults to validation only; publishing requires the explicit Publish release checkbox.
+- Hosted validation is pending for this commit. No 0.11.1 APK, tag or GitHub release is claimed before that run succeeds. Hosted logs/artifacts are the canonical additional evidence and should not be retroactively inserted into the source commit they validate.
+
+---
+
 # 0.11.0 in-app update validation
 
 Validated October 1, 2026 using the cached JDK 20 / Android SDK 36 toolchain and disposable Android 16 ARM64 tablet emulator. App version **0.11.0 / code 19**.
