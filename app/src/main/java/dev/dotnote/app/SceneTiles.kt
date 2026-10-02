@@ -712,31 +712,30 @@ internal class SceneTiles(
             if (!covered) (missing ?: ArrayList<Tile>().also { missing = it }).add(t)
         }
         val gaps = missing ?: return
-        var world = gaps[0].world
-        var left = Float.MAX_VALUE
-        var top = Float.MAX_VALUE
-        var right = -Float.MAX_VALUE
-        var bottom = -Float.MAX_VALUE
-        gaps.forEach {
-            world = world.union(it.world)
-            screenRect(f, it)
-            left = minOf(left, dst.left)
-            top = minOf(top, dst.top)
-            right = maxOf(right, dst.right)
-            bottom = maxOf(bottom, dst.bottom)
+        val complete = gaps.any { it.failedAt == version || f.moving }
+        // Fill gaps per horizontal run of missing tiles. One bounding box over scattered gaps
+        // (e.g. two corners) would make the fallback walk every item on screen.
+        var i = 0
+        while (i < gaps.size) {
+            val first = gaps[i]
+            var last = first
+            while (
+                i + 1 < gaps.size && gaps[i + 1].y == first.y && gaps[i + 1].x == last.x + 1
+            ) {
+                last = gaps[++i]
+            }
+            i++
+            screenRect(f, first)
+            val left = dst.left
+            val top = dst.top
+            screenRect(f, last)
+            canvas.save()
+            canvas.clipRect(left, top, dst.right, dst.bottom)
+            fallback(canvas, first.world.union(last.world), complete)
+            canvas.restore()
         }
-        canvas.save()
-        canvas.clipRect(left, top, right, bottom)
-        val gapSet = gaps.toHashSet()
-        for (y in f.y0..f.y1) for (x in f.x0..f.x1) {
-            val t = tile(f.level, x, y)
-            if (t in gapSet) continue
-            screenRect(f, t)
-            if (dst.intersects(left, top, right, bottom)) canvas.clipOutRect(dst)
-        }
-        // Tiles on their way may skip strokes that are not built yet; failed tiles may not.
-        fallback(canvas, world, gaps.any { it.failedAt == version || f.moving })
-        canvas.restore()
+        if (BuildConfig.DEBUG && gaps.size > 0)
+            android.util.Log.i("DotnoteTiles", "gaps=${gaps.size} moving=${f.moving} markers=$markers")
     }
 
     private fun screenRect(f: Frame, t: Tile) {

@@ -2,13 +2,19 @@
 
 An offline, native Kotlin notebook for Android tablets. Built with Jetpack Compose, AndroidX Ink 1.0, Room, and Android's PDF renderer. Works offline without an account. Optional GitHub backups; no subscriptions or analytics.
 
+## 0.10.0 performance
+
+Dense notes stay smooth: finished writing is drawn once into cached tiles in the background, so panning, zooming, finishing a stroke, erasing and moving a selection no longer slow down as the number of visible drawings grows. Notes larger than about 2,000 strokes, which earlier versions could not re-save or reopen, now save and open normally. Saving, opening, startup and GitHub backups do much less work. Nothing changes in how you use the app or in the note format.
+
+Current app version: **0.10.0 / code 16**. Measured before/after timings are in [VALIDATION.md](VALIDATION.md). Install over the previous build; existing notes are kept and the note list index is rebuilt automatically on first start.
+
 ## 0.9.1 text resizing and local startup
 
 Select text and choose **Resize** to change its wrapping width at the same font size. Drag the corner handle horizontally; the box height fits the resulting lines. Choose **Scale** to enlarge or shrink the existing layout proportionally. Editing text retains its box width. Explicit paragraph breaks remain intact.
 
 Startup loads local notes rather than syncing a repository. Its messages now identify opening the local vault, reading local notes and updating the note list. File validation avoids redundant document parsing and drawing-object construction, index writes are batched, and backup scheduling runs off the UI thread. The library appears after local loading, avoiding an empty-list flash.
 
-Current app version: **0.9.1 / code 15**. See [VALIDATION.md](VALIDATION.md) for measured emulator timings and test results.
+This feature release was **0.9.1 / code 15**.
 
 ## 0.9.0 text and templates
 
@@ -60,7 +66,7 @@ Start with [docs/README.md](docs/README.md) for the implementation guide: archit
 
 ## Install
 
-Install `dist/dotnote-0.9.1.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
+Install `dist/dotnote-0.10.0.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
 
 Install this APK over the previous Dotnote build to keep your library.
 
@@ -144,7 +150,7 @@ This is a personal-use build. No typed text, handwriting recognition, cloud sync
 
 Highlighter colors share one translucent layer below pen/shape ink. Different marker colors replace rather than darken one another where they overlap; the most recently used color is on top. Existing saved highlights use this rendering too.
 
-The canvas uses a shared spatial grid to find visible objects, retains visible stroke geometry plus a bounded offscreen cache, and caches PDF pages. Index updates after edits and very dense visible scenes still scale with object count. Very large notebooks need further profiling on the tablet. “Infinite” means no imposed page boundary, with the practical limits of memory and floating-point coordinates. PDF export is capped at 500 pages; backup restore at 1 GiB; individual local PDF imports at 512 MiB. Vault reading permits 10,000 entries, fewer than 64 directory levels, 64 MiB per note and 256 MiB total note JSON. Filesystem path/name limits also apply.
+The canvas draws finished content from cached raster tiles (up to 96 MB) rendered on a background thread, finds nearby objects with a spatial grid, and caches PDF pages. Right after opening a dense note, tiles appear over a fraction of a second; strokes not yet tessellated fill in with their tile. Physical-tablet performance has not been measured. “Infinite” means no imposed page boundary, with the practical limits of memory and floating-point coordinates. PDF export is capped at 500 pages; backup restore at 1 GiB; individual local PDF imports at 512 MiB. Vault reading permits 10,000 entries, fewer than 64 directory levels, 64 MiB per note and 256 MiB total note JSON. Filesystem path/name limits also apply.
 
 ## Verification
 

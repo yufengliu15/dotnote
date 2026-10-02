@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.10.0 — 2026-10-01
+
+- Rendering overhaul for dense notes: finished ink and highlights are drawn once into 512 px tiles on a background thread and frames only composite tiles, so pan, zoom, pen-up, eraser and selection costs no longer grow with the number of visible strokes. Edits repaint only the changed pixels of the affected tiles; a moved selection is translated as one cached image; a whole-note overview fills areas revealed while zooming out; dots are one batched draw; marker tiles are stored pre-faded, so no translucent layer is needed while idle.
+- Fixed large notes: the Room index no longer stores note content. Notes above Android's 2 MB CursorWindow (roughly 2,000 handwritten strokes) could previously be saved once but then not re-saved, closed or reopened. The index is rebuilt metadata-only on first start; no file format change.
+- Faster saving: each stroke's JSON is cached and streamed into the file (byte-identical to the previous org.json output), queued saves of the same note collapse into one write, unchanged scenes are not rewritten, and single-file saves skip the journal and folder walk.
+- Faster opening and startup: a streaming JSON parser replaces org.json for notes; validated note files are remembered by inode/size/nanosecond mtime in app-private storage, so unchanged notes are not re-read on startup, before backups, or after import/restore.
+- Faster GitHub backup/restore: changed text files are sent inside the tree request instead of one upload per note, the last backed-up tree listing and blob hashes are reused, unchanged backups need one request, snapshots hard-link instead of copying, and restores download up to six files at a time.
+- Folder renames/moves rewrite only notes whose paths change. Eraser, tap and lasso selection query nearby items only; PDF export visits only items on each page. Editor chrome no longer recomposes on every pan frame.
+- Added `PerformanceBenchmarkTest`, `TileRenderingTest` and `CodecCompatibilityTest`. Android versionCode: 16.
+
 ## 0.9.1 — 2026-10-01
 
 - Added Resize and Scale choices for selected text. Resize reflows words at the existing font size and fits the height to the lines; Scale preserves wrapping and scales text selections proportionally. Editing retains the chosen box width. No document migration is needed.

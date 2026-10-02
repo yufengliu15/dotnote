@@ -21,6 +21,8 @@ import kotlin.math.*
 
 // Constructed exclusively by Compose AndroidView with its editor state.
 @android.annotation.SuppressLint("ViewConstructor")
+private const val PAPER = 0xfffafaf6.toInt()
+
 class NotebookView(context: Context, val state: AppState) : FrameLayout(context) {
     private val density = resources.displayMetrics.density
     private val ink = InProgressStrokesView(context)
@@ -544,16 +546,17 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
             drawInk(canvas)
             return
         }
-        canvas.drawColor(0xfffafaf6.toInt())
         val doc = state.document
         val visible = viewport()
         val matrix = screenMatrix()
         val z = doc.camera.zoom
+        var spacing = 24f
+        while (spacing * z < 12) spacing *= 2
+        val cached = doc.dots && drawPaper(canvas, spacing * z * density)
+        if (!cached) canvas.drawColor(PAPER)
         canvas.save()
         canvas.concat(matrix)
-        if (doc.dots) {
-            var spacing = 24f
-            while (spacing * z < 12) spacing *= 2
+        if (doc.dots && !cached) {
             // One batched draw call instead of one call per dot.
             val x0 = floor(visible.left / spacing) * spacing
             val y0 = floor(visible.top / spacing) * spacing
@@ -631,6 +634,62 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
             paint.style = Paint.Style.FILL
         }
         canvas.restore()
+    }
+
+    private var paperBitmap: Bitmap? = null
+    private var paperPeriod = 0f
+    private var periodSeen = 0f
+    private var periodChangedAt = 0L
+
+    /**
+     * Paper and dots repeat every [period] pixels, so one cached image slightly larger than the
+     * view is blitted at the camera's phase (rounded to whole pixels; every dot shifts together by
+     * under half a pixel). It is rebuilt only when the dot period changes and stays unchanged for
+     * a moment, so a pinch keeps using batched point drawing.
+     */
+    private fun drawPaper(canvas: Canvas, period: Float): Boolean {
+        if (width <= 0 || height <= 0 || period < 4f) return false
+        val now = android.os.SystemClock.uptimeMillis()
+        if (period != periodSeen) {
+            periodSeen = period
+            periodChangedAt = now
+        }
+        var bitmap = paperBitmap
+        if (bitmap == null || paperPeriod != period || bitmap.width < width + period + 2 ||
+            bitmap.height < height + period + 2) {
+            if (now - periodChangedAt < 150) {
+                postInvalidateDelayed(160)
+                return false
+            }
+            val w = width + ceil(period).toInt() + 2
+            val h = height + ceil(period).toInt() + 2
+            bitmap =
+                bitmap?.takeIf { it.width == w && it.height == h }
+                    ?: Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888).also { paperBitmap = it }
+            bitmap.setHasAlpha(false)
+            val c = Canvas(bitmap)
+            c.drawColor(PAPER)
+            paint.color = 0xffcdd3ca.toInt()
+            paint.style = Paint.Style.FILL
+            var x = 0f
+            while (x < w + period) {
+                var y = 0f
+                while (y < h + period) {
+                    c.drawCircle(x, y, density, paint)
+                    y += period
+                }
+                x += period
+            }
+            paperPeriod = period
+            bitmap.prepareToDraw()
+        }
+        val c = state.document.camera
+        fun phase(offset: Float): Int {
+            val m = ((offset % period) + period) % period
+            return (m - period).roundToInt()
+        }
+        canvas.drawBitmap(bitmap, phase(c.x * density).toFloat(), phase(c.y * density).toFloat(), null)
+        return true
     }
 
     private fun drawInk(canvas: Canvas) {
