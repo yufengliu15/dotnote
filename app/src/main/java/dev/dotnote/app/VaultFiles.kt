@@ -319,6 +319,7 @@ class VaultFiles(val root: File, private val cacheFile: File? = null) {
         var total = 0L
         val rootCanonical = root.canonicalFile
         val checkedAssets = HashSet<String>()
+        val prepared = prepareScans(cached)
         fun walk(dir: File, parent: String?, depth: Int = 0) {
             require(depth < 64) { "Folder tree is too deep" }
             require(dir.canonicalFile == File(rootCanonical, dir.relativeTo(root).path)) {
@@ -359,7 +360,10 @@ class VaultFiles(val root: File, private val cacheFile: File? = null) {
                         total += length
                         require(total <= 256L * 1024 * 1024) { "Vault note data exceeds 256 MB" }
                         val reuse = cached?.get(path)?.takeIf { stamp != null && it.stamp == stamp }
-                        val scan = reuse ?: scanNote(file, stamp)
+                        val scan =
+                            reuse
+                                ?: prepared[path]?.takeIf { it.first == stamp }?.second?.getOrThrow()
+                                ?: scanNote(file, stamp)
                         require(validId(scan.id) && !notePaths.containsKey(scan.id)) {
                             "Duplicate or invalid note ID"
                         }
@@ -392,6 +396,50 @@ class VaultFiles(val root: File, private val cacheFile: File? = null) {
             saveCache()
         }
         return folders to notes
+    }
+
+    /**
+     * Validates notes that the scan cache cannot vouch for on several cores, before the ordered
+     * walk. Results (including failures) are keyed by path and stamp; the walk still applies every
+     * containment, ID and attachment check in order and raises the same first error. Links are not
+     * followed here, and large notes are left to the walk to bound memory.
+     */
+    private fun prepareScans(cached: Map<String, NoteScan>?): Map<String, Pair<FileStamp, Result<NoteScan>>> {
+        val cores = Runtime.getRuntime().availableProcessors()
+        if (cores < 2) return emptyMap()
+        val pending = ArrayList<Triple<String, File, FileStamp>>()
+        var visited = 0
+        fun collect(dir: File, depth: Int) {
+            if (depth >= 64) return
+            val children = dir.listFiles() ?: return
+            for (file in children) {
+                if (++visited > 10000) return
+                if (java.nio.file.Files.isSymbolicLink(file.toPath())) continue
+                if (file.name == ".dotnote" || (dir == root && file.name == "attachments")) continue
+                if (file.isDirectory) collect(file, depth + 1)
+                else if (file.extension == "dotnote") {
+                    val stamp = FileStamp.of(file) ?: continue
+                    if (stamp.size > 8L * 1024 * 1024) continue
+                    val path = file.relativeTo(root).invariantSeparatorsPath
+                    if (cached?.get(path)?.stamp == stamp) continue
+                    pending.add(Triple(path, file, stamp))
+                }
+            }
+        }
+        collect(root, 0)
+        if (pending.size < 2) return emptyMap()
+        val pool = java.util.concurrent.Executors.newFixedThreadPool(minOf(cores, 4, pending.size))
+        try {
+            val futures =
+                pending.map { (path, file, stamp) ->
+                    path to pool.submit<Pair<FileStamp, Result<NoteScan>>> {
+                        stamp to runCatching { scanNote(file, stamp) }
+                    }
+                }
+            return futures.associate { (path, future) -> path to future.get() }
+        } finally {
+            pool.shutdown()
+        }
     }
 
     /** Full validation of one note file, without building its drawable scene. */
