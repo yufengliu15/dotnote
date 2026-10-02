@@ -32,11 +32,16 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--allow-dirty", action="store_true")
     parser.add_argument("--check", action="store_true", help="Validate only; do not package")
+    parser.add_argument("--apk", type=Path, help="Explicit signed APK (defaults to local debug build)")
+    parser.add_argument("--output-dir", type=Path, help="Artifact directory (CI uses a directory outside the checkout)")
+    parser.add_argument("--require-release", action="store_true", help="Reject debuggable APKs and dirty sources")
     args = parser.parse_args()
+    if args.require_release and args.allow_dirty:
+        raise SystemExit("Published releases cannot allow dirty sources.")
     config = (ROOT / "app/build.gradle.kts").read_text()
     version = re.search(r'versionName\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"', config)[1]
     code = int(re.search(r'versionCode\s*=\s*(\d+)', config)[1])
-    apk = ROOT / "app/build/outputs/apk/debug/app-debug.apk"
+    apk = (args.apk or ROOT / "app/build/outputs/apk/debug/app-debug.apk").resolve()
     sdk = Path(os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or "")
     builds = [p for p in (sdk / "build-tools").glob("*") if (p / "aapt").is_file()]
     if not builds:
@@ -46,6 +51,8 @@ def main():
     package = re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", metadata)
     if not package or package.groups() != ("dev.dotnote.app", str(code), version):
         raise SystemExit("APK metadata does not match Gradle. Rebuild before packaging.")
+    if args.require_release and "application-debuggable" in metadata:
+        raise SystemExit("Published APK must not be debuggable.")
     build_inputs = list((ROOT / "app/src/main").rglob("*")) + [
         ROOT / p for p in ("app/build.gradle.kts", "build.gradle.kts", "settings.gradle.kts", "gradle.properties")
     ]
@@ -64,8 +71,13 @@ def main():
         return re.search(r"Signer #1 certificate SHA-256 digest: (\w+)", report)[1]
 
     cert = certificate(apk)
-    dist = ROOT / "dist"
-    previous = sorted((p for p in dist.glob("dotnote-*.apk")
+    policy = json.loads((ROOT / "scripts/release-policy.json").read_text())
+    if cert != policy["certificateSha256"]:
+        raise SystemExit("Signing identity does not match the pinned installed-app certificate.")
+    if code <= policy["minimumPreviousVersionCode"]:
+        raise SystemExit("versionCode must exceed the delivered baseline.")
+    dist = (args.output_dir or ROOT / "dist").resolve()
+    previous = sorted((p for p in (ROOT / "dist").glob("dotnote-*.apk")
                        if re.fullmatch(r"dotnote-\d+\.\d+\.\d+\.apk", p.name)),
                       key=lambda p: tuple(int(n) for n in re.findall(r"\d+", p.name)))
     if previous:
@@ -88,12 +100,12 @@ def main():
     checksums = dist / f"SHA256SUMS-{version}"
     if any(p.exists() for p in (apk_output, source_output, manifest, checksums)):
         raise SystemExit("Versioned artifacts already exist. Do not overwrite a delivered version.")
-    dist.mkdir(exist_ok=True)
+    dist.mkdir(parents=True, exist_ok=True)
     files = run("git", "ls-files", "--cached", "--others", "--exclude-standard", "-z").split("\0")
     with zipfile.ZipFile(source_output, "w", zipfile.ZIP_DEFLATED) as archive:
         for name in sorted(set(files)):
             path = ROOT / name
-            allowed = name.startswith(("app/src/", "app/schemas/", "docs/", "scripts/", "gradle/")) or name in {
+            allowed = name.startswith(("app/src/", "app/schemas/", "docs/", "scripts/", "gradle/", ".github/workflows/")) or name in {
                 "AGENTS.md", "README.md", "CHANGELOG.md", "VALIDATION.md", "TODO.md", ".gitignore",
                 "app/build.gradle.kts", "build.gradle.kts", "settings.gradle.kts", "gradle.properties", "gradlew", "gradlew.bat",
             }
@@ -108,14 +120,16 @@ def main():
         "dirtyState": dirty.splitlines(),
         "certificateSha256": cert,
         "apkSha256": sha(apk_output), "sourceSha256": sha(source_output),
+        "debuggable": "application-debuggable" in metadata,
     }, indent=2) + "\n")
     checksums.write_text("".join(f"{sha(p)}  {p.name}\n" for p in (apk_output, source_output, manifest)))
-    for source, name in ((apk_output, "dotnote-debug.apk"), (source_output, "dotnote-source.zip")):
+    apk_alias = "dotnote-debug.apk" if "application-debuggable" in metadata else "dotnote.apk"
+    for source, name in ((apk_output, apk_alias), (source_output, "dotnote-source.zip")):
         shutil.copyfile(source, dist / name)
     (dist / "SHA256SUMS").write_text("".join(
-        f"{sha(dist / name)}  {name}\n" for name in ("dotnote-debug.apk", "dotnote-source.zip")
+        f"{sha(dist / name)}  {name}\n" for name in (apk_alias, "dotnote-source.zip")
     ))
-    print(f"Packaged {apk_output.relative_to(ROOT)} ({'development snapshot' if dirty else 'clean tree'})")
+    print(f"Packaged {apk_output} ({'development snapshot' if dirty else 'clean tree'})")
 
 
 if __name__ == "__main__":

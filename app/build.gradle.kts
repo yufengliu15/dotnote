@@ -12,9 +12,23 @@ android {
         applicationId = "dev.dotnote.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 18
-        versionName = "0.10.1"
+        versionCode = 19
+        versionName = "0.11.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+    signingConfigs {
+        create("distribution") {
+            System.getenv("DOTNOTE_KEYSTORE")?.let { storeFile = file(it) }
+            storePassword = System.getenv("DOTNOTE_STORE_PASSWORD")
+            keyAlias = System.getenv("DOTNOTE_KEY_ALIAS")
+            keyPassword = System.getenv("DOTNOTE_KEY_PASSWORD")
+        }
+    }
+    buildTypes {
+        getByName("release") {
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("distribution")
+        }
     }
     buildFeatures {
         compose = true

@@ -50,9 +50,9 @@ Outputs include:
 
 Use `adb devices` to confirm the intended target; pass `-s <serial>` when more than one device is attached. Installing instrumentation tests does not run them. Never uninstall/clear production app data just to solve a build or signing mismatch; that deletes local vaults. Export first if a destructive device reset is actually necessary.
 
-The current distributable is a debug-signed personal-test build. There is no checked-in production signing setup, Play Store pipeline or CI release workflow. `assembleRelease` alone is not a configured production distribution process.
+Local snapshots remain debug-signed personal-test builds. An explicitly signed non-debuggable release build and manually triggered GitHub Actions workflow are now configured; activation requires committing/pushing the workflow and setting the existing compatible signing key as protected secrets. There is no Play Store pipeline. See [app updates and free distribution](app-updates.md).
 
-## Test inventory: 38 JVM tests
+## Test inventory: 44 JVM tests
 
 Tests are in [`app/src/test/java/dev/dotnote/app/`](../app/src/test/java/dev/dotnote/app/).
 
@@ -65,6 +65,8 @@ Tests are in [`app/src/test/java/dev/dotnote/app/`](../app/src/test/java/dev/dot
 | `SceneResourcesTest` | 5 | Visible-cache retention above 400 objects; bounded offscreen LRU; spatial lookup equivalence/order and extreme coordinates; 20,000-object pan query work; edit/undo/viewport invalidation |
 | `WidgetRulesTest` | 2 | Adaptive widget capacity; full folder paths with duplicate display names |
 | `CalendarRulesTest` | 3 | Monday-first complete months, leap years, year rollover, local midnight across daylight saving |
+
+`UpdateRulesTest` adds 6 tests for release filtering/versioning, manifest and asset validation, HTTPS redirect restrictions, bounded/canceled downloads, and APK identity/signature checks. `AppUpdateTest` adds 2 Android tests for installer/provider confinement and invalid/same-version APK rejection. Four Python release-history tests run with `python3 -m unittest discover -s scripts -p 'test_*.py'`.
 
 These are ordinary JUnit tests with a JVM `org.json` dependency. Native Android Ink rendering, actual Room/WorkManager, Views and PDF APIs require instrumentation; a passing JVM suite cannot establish those behaviors.
 

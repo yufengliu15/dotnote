@@ -2,7 +2,7 @@
 
 Start here when joining the project or changing the app. These documents describe the implementation, not a proposed design.
 
-**Current release:** app 0.10.1, version code 18. `app/build.gradle.kts` is authoritative for current app metadata; [CHANGELOG.md](../CHANGELOG.md) records changes and [VALIDATION.md](../VALIDATION.md) records what was tested. Historical entries keep their original versions. Follow [versioning and source control](build-test-release.md#versioning-and-source-control) when shipping any change.
+**Current release:** app 0.11.0, version code 19. `app/build.gradle.kts` is authoritative for current app metadata; [CHANGELOG.md](../CHANGELOG.md) records changes and [VALIDATION.md](../VALIDATION.md) records what was tested. Historical entries keep their original versions. Follow [versioning and source control](build-test-release.md#versioning-and-source-control) when shipping any change.
 
 ## What the app is
 
@@ -25,6 +25,7 @@ There is no server, subscription, analytics, handwriting recognition, or collabo
 | [Default notes app](default-notes-app.md) | Android Notes role, Lenovo selection, fresh quick notes, lock-screen privacy and lifecycle |
 | [Vaults and GitHub backups](vaults-and-github-backups.md) | Authentication, configuration, scheduling, Git protocol, conflicts and restore |
 | [Widgets and ink startup](widgets-and-ink-startup.md) | RemoteViews, size calculations, launch intents, recency, vault rename, latency work |
+| [App updates and free distribution](app-updates.md) | In-app updater, signing compatibility, GitHub Actions setup and publishing |
 | [Build, test, and release](build-test-release.md) | Toolchain, commands, exact test inventory, release checks and emulator caveat |
 | [Maintenance and known issues](maintenance-and-known-issues.md) | Change checklist, task-to-file routing, diagnostics, unresolved issues |
 

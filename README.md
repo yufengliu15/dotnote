@@ -2,6 +2,10 @@
 
 An offline, native Kotlin notebook for Android tablets. Built with Jetpack Compose, AndroidX Ink 1.0, Room, and Android's PDF renderer. Works offline without an account. Optional GitHub backups; no subscriptions or analytics.
 
+## 0.11.0 in-app updates
+
+Check for updates, download a verified APK, and open Android’s installer from **Version & updates**. No extra updater app or account is required. Release automation is implemented; its first hosted run still requires repository setup.
+
 ## 0.10.1 note previews
 
 The notes grid shows small, centered snapshots of saved content. Visible cards load in the background and reuse a bounded image cache. Long notes containing PDFs preview the first page of the first PDF with its annotations, instead of shrinking the whole deck.
@@ -10,7 +14,7 @@ The notes grid shows small, centered snapshots of saved content. Visible cards l
 
 Fixed “Row too big to fit into CursorWindow” when saving or reopening a large note. Document reads now use small chunks, including folder operations, backups and legacy migration. Existing files and the database schema are retained; install as an update without clearing app data.
 
-Current app version: **0.10.1 / code 18**. See [VALIDATION.md](VALIDATION.md) for test results.
+Current app version: **0.11.0 / code 19**. See [VALIDATION.md](VALIDATION.md) for test results.
 
 ## 0.9.1 text resizing and local startup
 
@@ -62,7 +66,7 @@ Flick with one finger to coast through PDFs and across the canvas. Faster flicks
 
 Highlighter drawing now appends live geometry in bounded chunks, avoids interactive path unions, and redraws separately from PDFs and finished pen strokes. Saving a stroke no longer builds a duplicate native mesh. Native Ink warms before writing; actual first-stroke latency still needs confirmation on the Galaxy Tab S6 Lite.
 
-Open either the library or note dropdown and tap **Dotnote version** to see the installed version and build number.
+Open either the library or note dropdown and tap **Version & updates** to see the installed version and build number.
 
 ## Engineering documentation
 
@@ -70,7 +74,9 @@ Start with [docs/README.md](docs/README.md) for the implementation guide: archit
 
 ## Install
 
-Install `dist/dotnote-0.10.1.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
+Install `dist/dotnote-0.11.0.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. The local 0.11.0 APK is a non-debuggable development snapshot signed with the existing debug certificate for update compatibility. Install it over the current app; do not uninstall or clear data.
+
+From 0.11.0 onward, use **Version & updates → Check for updates** to download verified updates directly inside Dotnote. Stable releases are checked by default; preview releases are optional. Android still confirms installation and may show Play Protect prompts. First installs use the [GitHub releases page](https://github.com/yufengliu15/dotnote/releases). See [app updates and release automation](docs/app-updates.md).
 
 Install this APK over the previous Dotnote build to keep your library.
 

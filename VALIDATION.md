@@ -1,3 +1,21 @@
+# 0.11.0 in-app update validation
+
+Validated October 1, 2026 using the cached JDK 20 / Android SDK 36 toolchain and disposable Android 16 ARM64 tablet emulator. App version **0.11.0 / code 19**.
+
+- Debug app and instrumentation assembly, explicitly signed non-debuggable release assembly, all **44 JVM tests**, and debug/release lint passed. Both lint reports have **0 errors / 49 warnings**. Four Python release-history tests, Python syntax checks, workflow YAML parsing, and `git diff --check` passed.
+- **11 focused Android tests passed**: AppUpdateTest (2), NativePipelineTest (2), VaultPipelineTest (4), VaultLifecycleTest (3), in separate instrumentation processes. AppUpdateTest passed again against the non-debuggable release APK after an in-place install over the debug build.
+- Updated the emulator from 0.10.1/code 18 to 0.11.0/code 19 without uninstalling or clearing data. All **175 private files** in the app's files directory matched byte-for-byte immediately after the update. Existing native/PDF/vault/migration regressions passed afterward.
+- Updater regressions cover numeric versions, preview/draft filtering, malformed manifest and asset locations, restricted HTTPS hosts, bounded/canceled streaming, wrong package/version/signing identity, private-file exclusion from the update FileProvider, corrupt downloads, and same-version APK rejection. Release-history tests reject reused versions, lower codes and duplicate drafts.
+- Visually inspected the Version & updates dialog at 1280×800. A manual network check entered its progress state, but the session was interrupted to install the release build; live check completion, permission-settings return, canceled/successful system-installer UI and physical-tablet Play Protect behavior remain unverified. There is no newer published release with which to complete an end-to-end self-update.
+- APK metadata is 0.11.0/code 19, package dev.dotnote.app, and non-debuggable. Its signing certificate matches the historical installed-app identity: SHA-256 `825739c9e1b77f0276094938143f07b6a51e636344c076fa90f6caad869d9744`. This intentionally retains the old debug certificate as a compatibility bridge; it is not Play Store signing.
+- Read-only GitHub preflight accepted 0.11.0/code 19 before local packaging. The hosted GitHub Actions workflow has not run. Activation requires reviewed commits/push, the protected release signing secrets, and an explicit workflow dispatch. Local snapshot manifests reserve their version and code for the next publication; do not reuse 0.11.0 for a changed clean build.
+
+Package using `scripts/package-release.py --allow-dirty --apk app/build/outputs/apk/release/app-release.apk`: this is a **development snapshot** on `codex/in-app-updates-0.11.0`. Preexisting 0.9.2–0.10.1 source changes, TODO edits and `.perf-transfer.bundle` are preserved. No commit, tag, push, signing-key upload or GitHub publication is claimed. Artifacts: `dist/dotnote-0.11.0.apk`, source ZIP, `dist/release-0.11.0.json`, and `dist/SHA256SUMS-0.11.0`; current alias is `dist/dotnote.apk`. The manifest records the actual dirty source state and source/APK hashes.
+
+Evidence: `/private/tmp/dotnote-0.11.0-build.log`, `dotnote-0.11.0-release-build.log`, `dotnote-0.11.0-android-tests.log`, `dotnote-0.11.0-release-tests.log`, `dotnote-0.11.0-package.log`; updater screenshot `/private/tmp/dotnote-update-dialog.png`. Source code and tests do not modify the note format, drawing, backup credentials or source PDFs.
+
+---
+
 # 0.10.1 long-note preview validation
 
 Validated October 1, 2026 with cached JDK 20 / Android SDK 36 and the existing disposable Android 16 ARM64 emulator. App version **0.10.1 / code 18**.

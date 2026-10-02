@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.11.0 — 2026-10-01
+
+- Added manual in-app update checks, optional preview releases, bounded APK downloads, hash/package/version/signing verification, and Android installer handoff after saving notes. No extra updater app or account is required.
+- Added an explicitly signed non-debuggable distribution build and a manually triggered GitHub Actions release workflow with clean-source, signing and version checks. Existing signing identity is retained for compatible updates. Android versionCode: 19.
+
 ## 0.10.1 — 2026-10-01
 
 - Long notes containing PDFs now preview only the first page of the first PDF, including annotations within that page. Other pages are not rendered. Ordinary notes keep full-scene previews. Android versionCode: 18.

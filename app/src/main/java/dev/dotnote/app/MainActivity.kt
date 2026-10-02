@@ -257,7 +257,7 @@ private fun Library(state: AppState) {
                     )
                     DefaultNotesMenuItem { menu = false }
                     DropdownMenuItem(
-                        text = { Text("Dotnote version") },
+                        text = { Text("Version & updates") },
                         onClick = {
                             menu = false
                             version = true
@@ -461,7 +461,7 @@ private fun Library(state: AppState) {
         }
     }
     if (vaults) VaultManagerDialog(state) { vaults = false }
-    if (version) VersionDialog { version = false }
+    if (version) UpdateDialog(beforeInstall = { state.saveWriting(); state.flush() }) { version = false }
     if (githubSettings) GitHubSettings(state) { githubSettings = false }
     if (dialog != null)
         NameDialog("New folder", "") { value ->
@@ -850,7 +850,7 @@ internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() ->
                         )
                         DefaultNotesMenuItem { overflow = false }
                         DropdownMenuItem(
-                            text = { Text("Dotnote version") },
+                            text = { Text("Version & updates") },
                             onClick = {
                                 overflow = false
                                 version = true
@@ -1086,7 +1086,7 @@ internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() ->
             },
             confirmButton = { TextButton(onClick = { pages = false }) { Text("Close") } },
         )
-    if (version) VersionDialog { version = false }
+    if (version) UpdateDialog(beforeInstall = { canvas?.settle(); state.saveWriting(); state.flush() }) { version = false }
     if (help)
         AlertDialog(
             onDismissRequest = { help = false },
@@ -1284,14 +1284,4 @@ private fun Stepper(label: String, value: Int, onChange: (Int) -> Unit) {
             Icon(Icons.Outlined.Add, "More $label")
         }
     }
-}
-
-@Composable
-private fun VersionDialog(onDismiss: () -> Unit) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Dotnote version") },
-        text = { Text("Dotnote ${BuildConfig.VERSION_NAME}\nBuild ${BuildConfig.VERSION_CODE}") },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
-    )
 }
