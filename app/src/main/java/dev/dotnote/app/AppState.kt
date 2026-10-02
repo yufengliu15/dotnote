@@ -63,6 +63,24 @@ class AppState(application: Application) : AndroidViewModel(application) {
     var message by mutableStateOf<String?>(null)
     var importReport by mutableStateOf<String?>(null)
     var tool by mutableStateOf(Tool.PEN)
+    var fillHighlighter by mutableStateOf(false)
+
+    fun fillAt(point: Pt, viewport: Bounds) = runAction {
+        val destination = store
+        val id = note?.id ?: return@runAction
+        val source = document
+        val chosenColor = color
+        val highlighter = fillHighlighter
+        val item =
+            withContext(Dispatchers.Default) {
+                bucketFill(source, destination.assets, point, viewport, chosenColor, highlighter)
+            }
+        if (store === destination && note?.id == id && document.items === source.items) {
+            if (item == null) message = "Tap inside a closed area fully visible on the canvas."
+            else commit(document.items + item)
+        }
+    }
+
     var textEdit by mutableStateOf<TextEditRequest?>(null)
         private set
 
@@ -132,7 +150,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
         private set
 
     private var saveSequence = 0L
-    private var cameraJob: Job? = null
+    private var autosaveJob: Job? = null
 
     private data class Save(
         val storage: Store,
@@ -198,6 +216,15 @@ class AppState(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             for (save in queue) {
+                // Obsolete background snapshots need no encoding or disk write. Flush barriers
+                // are never dropped, and requests for other notes/vaults keep their destination.
+                if (
+                    save.done == null &&
+                        store === save.storage &&
+                        note?.id == save.id &&
+                        save.sequence != saveSequence
+                )
+                    continue
                 val ok =
                     try {
                         withContext(Dispatchers.IO) {
@@ -490,7 +517,20 @@ class AppState(application: Application) : AndroidViewModel(application) {
         openings.trySend(store to value.id)
     }
 
+    private fun scheduleSave() {
+        val id = note?.id ?: return
+        autosaveJob?.cancel()
+        saved = false
+        val snapshot = Save(store, id, document, ++saveSequence)
+        autosaveJob =
+            viewModelScope.launch {
+                delay(3000)
+                queue.send(snapshot)
+            }
+    }
+
     fun save() {
+        autosaveJob?.cancel()
         val id = note?.id ?: return
         saved = false
         saveSequence++
@@ -498,8 +538,9 @@ class AppState(application: Application) : AndroidViewModel(application) {
     }
 
     suspend fun flush(): Boolean {
-        cameraJob?.cancel()
+        autosaveJob?.cancel()
         val id = note?.id ?: return true
+        if (saved) return true
         saved = false
         saveSequence++
         val done = CompletableDeferred<Boolean>()
@@ -520,7 +561,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
         history.push(before)
         document = document.copy(items = items)
         revision++
-        save()
+        scheduleSave()
     }
 
     fun preview(items: List<Item>) {
@@ -533,7 +574,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
             document = document.copy(items = it)
             selection = emptySet()
             revision++
-            save()
+            scheduleSave()
         }
     }
 
@@ -542,7 +583,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
             document = document.copy(items = it)
             selection = emptySet()
             revision++
-            save()
+            scheduleSave()
         }
     }
 
@@ -561,18 +602,13 @@ class AppState(application: Application) : AndroidViewModel(application) {
 
     fun camera(camera: Camera) {
         document = document.copy(camera = camera)
-        cameraJob?.cancel()
-        cameraJob =
-            viewModelScope.launch {
-                delay(350)
-                save()
-            }
+        scheduleSave()
     }
 
     fun dots() {
         document = document.copy(dots = !document.dots)
         revision++
-        save()
+        scheduleSave()
     }
 
     fun renameNote(title: String) = runAction {

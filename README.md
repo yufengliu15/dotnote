@@ -14,7 +14,7 @@ The notes grid shows small, centered snapshots of saved content. Visible cards l
 
 Fixed “Row too big to fit into CursorWindow” when saving or reopening a large note. Document reads now use small chunks, including folder operations, backups and legacy migration. Existing files and the database schema are retained; install as an update without clearing app data.
 
-Current app version: **0.11.2 / code 21**. See [VALIDATION.md](VALIDATION.md) for test results.
+Current app version: **0.12.1 / code 23**. See [VALIDATION.md](VALIDATION.md) for test results.
 
 ## 0.9.1 text resizing and local startup
 
@@ -74,7 +74,7 @@ Start with [docs/README.md](docs/README.md) for the implementation guide: archit
 
 ## Install
 
-Install `dist/dotnote-0.11.2.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. The 0.11.2 build is non-debuggable and retains the existing signing certificate for update compatibility. It is not a Play Store build. Install it over the current app; do not uninstall or clear data.
+Install `dist/dotnote-0.12.1.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. The 0.12.1 GitHub Actions release is non-debuggable and retains the existing signing certificate for update compatibility. It is not a Play Store build. Install it over the current app; do not uninstall or clear data.
 
 From 0.11.0 onward, use **Version & updates → Check for updates** to download verified updates directly inside Dotnote. Stable releases are checked by default; preview releases are optional. Android still confirms installation and may show Play Protect prompts. First installs use the [GitHub releases page](https://github.com/yufengliu15/dotnote/releases). See [app updates and release automation](docs/app-updates.md).
 
@@ -87,6 +87,8 @@ Create a note from the library. Use a stylus to write, one finger to drag or fli
 - Default Android notes-app registration and private lock-screen quick notes on supported devices.
 - Hidden Android navigation/taskbar, temporarily revealed by swiping up from the bottom; the status bar stays visible.
 - Infinite dot-grid canvas with momentum pan/zoom, return-to-content, and saved camera position.
+- Bucket fill with Pen / Highlighter base choices, using the selected colour; closed areas must be fully visible. Palette colour taps activate Pen.
+- Hold and drag notes/folders into folder cards or parent breadcrumbs.
 - Native Ink pressure pen and a constant-opacity highlighter (repeated strokes do not darken). Whole-stroke eraser; stylus eraser tip/primary button support when reported by Android.
 - Tools share the note header, with optional left/right docking. Long-press any of six color slots for a hue/saturation wheel, brightness slider, or hex entry; slots persist across sessions. Adjustable widths and persistent preferences.
 - Lines, arrows, rectangles, squares, ellipses, circles, and grids with 1–30 rows/columns.

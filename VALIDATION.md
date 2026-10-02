@@ -1,3 +1,30 @@
+# 0.12.1 GitHub Actions release validation
+
+App version **0.12.1 / code 23**, October 2, 2026. App behavior matches the locally verified 0.12.0 snapshot below; only app version metadata and delivery documentation changed. The new version preserves the identity of the already delivered 0.12.0/code 22 debug APK.
+
+The Release Dotnote workflow must build and test this exact clean source commit, verify its signing identity, package a non-debuggable APK, and publish it as a prerelease. Hosted success is not claimed before the run completes; GitHub Actions logs and the published release manifest provide the exact commit, checks and hashes. Local 0.12.0 artifacts and historical evidence remain unchanged. Unrelated TODO edits and the transfer bundle are excluded from the release commit.
+
+Standing delivery instructions now require committing/pushing scoped work and running `release.yml` with publishing enabled after a completed deliverable app build, unless the user explicitly requests otherwise. This run is explicitly requested by the user.
+
+---
+
+# 0.12.0 editor quality-of-life validation
+
+App version **0.12.0 / code 22**, October 1, 2026. Validated with cached JDK 20 / Android SDK 36 and the disposable Android 16 ARM64 tablet emulator. This is a **development snapshot**, not a clean tagged release.
+
+- Debug application and instrumentation assembly, all **46 JVM tests**, and debug lint pass (**0 errors / 50 warnings**). Nine Python release-script tests and `git diff --check` pass. Room schema 2 is unchanged.
+- **27 Android tests passed** in isolated class invocations: QualityOfLifeTest (2), QualityOfLifeUiTest (1), LargeNoteStorageTest (2), VaultPipelineTest (4), VaultLifecycleTest (3), NativePipelineTest (2), GesturePipelineTest (2), EditorUpdateTest (3), InkStartupTest (1), HighlighterPerformanceTest (2), VectorPerformanceTest (2), FlingNavigationTest (3).
+- The large-save fixture contains **6,387,132 UTF-8 bytes** (450 Unicode text objects). An immediate flush took **246 ms** on the emulator. The test verifies no write before three seconds after the last edit, reset by a subsequent edit, automatic persistence, immediate flush, cancellation of the delayed duplicate, undo/redo, close and file-authoritative reopen. This is a measured synthetic fixture, not a physical-tablet latency guarantee or a before/after benchmark. Earlier output labeled UTF-16 character count as bytes; the final test reports actual UTF-8 bytes.
+- Real held-pointer gestures move both notes and folders into a folder and back to root through the parent breadcrumb; the destination remains unchanged while held and updates on release. Toolbar checks verify palette-to-Pen activation, colour retention and two horizontally aligned Fill options. A real finger canvas tap produces a highlighter fill, then undo/redo and close succeed. Tests also cover closed/open flood boundaries, holes, transformed selection, legacy fill defaults and malformed fill rejection.
+- Pixel tests verify opaque pen fills, preserved borders, constant marker opacity, saved reopen, backup/merge restore and exported PDF coverage. Existing native ink, eraser/selection, attachment, recovery journal, vault switching, rendering and navigation suites passed. Fill rendering is bounded to the visible canvas (at most 1024×1024 raster cells); the entire closed boundary must be visible. Thin boundaries at low zoom may require zooming in. No original note/attachment format is inferred or rewritten.
+- Initial test-only failures were corrected: a local lateinit check and selected-vault type in the fixture; stale accessibility nodes after navigation; an unspecified synthetic pointer type; and a tap injected before the popup exit animation released its input window. Final focused runs pass. No production data was cleared or uninstalled.
+
+Package with `scripts/package-release.py --allow-dirty`. The APK retains the installed signing identity, SHA-256 `825739c9e1b77f0276094938143f07b6a51e636344c076fa90f6caad869d9744`, and is debuggable. Source branch: `codex/editor-qol-0.12.0`. Preexisting TODO edits and `.perf-transfer.bundle` are preserved. The manifest records the exact base commit, dirty paths and source/APK hashes. No commit, tag, push or GitHub publication is claimed.
+
+Artifacts: `dist/dotnote-0.12.0.apk`, `dist/dotnote-0.12.0-source.zip`, `dist/release-0.12.0.json`, `dist/SHA256SUMS-0.12.0`; the debug alias is `dist/dotnote-debug.apk`. Evidence lives under `/private/tmp/dotnote-qol-*.log`, especially `final-build`, `checks`, `final-lint`, `QualityOfLifeTest-final`, `ui-tap-final`, each existing regression class name, and `package`. Physical-tablet acceptance remains pending; install over the existing app and try the affected large note.
+
+---
+
 # 0.11.2 automatic APK publication validation
 
 Release-channel policy follow-up: publishing now defaults to prerelease; stable publication requires an explicit workflow/CLI choice. Nine Python tests (including draft/publication channel checks), YAML validation and `git diff --check` pass. This changes release classification only: the 0.11.2 tag and APK remain the originally tested build; no replacement APK or new version is generated.

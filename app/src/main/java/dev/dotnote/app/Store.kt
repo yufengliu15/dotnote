@@ -109,6 +109,12 @@ abstract class RoomLibraryDao : LibraryDao {
     )
     protected abstract suspend fun noteRecord(id: String): NoteRecord?
 
+    @Query("SELECT id, folderId, title, modified, isTemplate FROM notes WHERE id=:id")
+    abstract suspend fun noteSummary(id: String): NoteSummary?
+
+    @Query("SELECT document = :document FROM notes WHERE id=:id")
+    abstract suspend fun documentMatches(id: String, document: String): Boolean?
+
     @Query("SELECT substr(document, :offset, :count) FROM notes WHERE id=:id")
     protected abstract suspend fun documentChunk(id: String, offset: Int, count: Int): String
 

@@ -43,6 +43,8 @@ All paths below are relative to this documentation directory. The table covers e
 | [Document.kt](../app/src/main/java/dev/dotnote/app/Document.kt) | Immutable scene and geometry: `Pt`, `Bounds`, `Transform`, `Camera`, `Item`, `Document`, `Tool`, `History`, `DocumentCodec`, hit tests, folder-cycle validation |
 | [NotebookView.kt](../app/src/main/java/dev/dotnote/app/NotebookView.kt) | Custom `FrameLayout`; native live ink, completed scene, pointer ownership, pan/zoom, selection/eraser/shapes, PDF worker and bitmap cache |
 | [Rendering.kt](../app/src/main/java/dev/dotnote/app/Rendering.kt) | Brush families, input serialization, `ObjectRenderer`, `PdfPageSource`, `PdfFiles.import/export`, Android matrix conversions |
+| [FillTool.kt](../app/src/main/java/dev/dotnote/app/FillTool.kt) | Bounded visible-scene bucket rasterization, enclosed-region flood fill, portable vector coverage |
+| [LibraryDrag.kt](../app/src/main/java/dev/dotnote/app/LibraryDrag.kt) | Long-press drag ownership, root-coordinate hit targets and lifted preview |
 | [TextTool.kt](../app/src/main/java/dev/dotnote/app/TextTool.kt) | Note-scoped text drafts/dialog, StaticLayout measurement and text item construction |
 | [ColorPicker.kt](../app/src/main/java/dev/dotnote/app/ColorPicker.kt) | Shared hue/saturation wheel, brightness slider, hex input, opaque selected color |
 | [Store.kt](../app/src/main/java/dev/dotnote/app/Store.kt) | Room entities/DAO/database and transactional chunked document reads; `Store` initialization, old database migration, file-to-index rebuild, legacy ZIP backup/restore |
@@ -92,8 +94,8 @@ An open note is loaded from the index after readiness. Document JSON decoding ru
 
 - UI events and Compose state run on the main thread. File, database, JSON-load, import/export and network work use IO where the implementation explicitly dispatches it.
 - `AppState.actions` serializes high-level operations such as opening, switching, importing and closing. `runAction` shows a blocking busy overlay, awaits the current store, reports failures through `message`, and rethrows coroutine cancellation.
-- `queue: Channel<Save>(UNLIMITED)` has one consumer. Each request captures its `Store`, note ID, immutable document and sequence. Encoding and DAO saving run on IO in order. Only the latest sequence for the same currently open note/store can turn the save indicator to “Saved.”
-- `flush()` cancels pending camera debounce, queues the latest snapshot with a `CompletableDeferred`, and waits for success. Closing or switching aborts when it returns false. `save()` just enqueues; it does not synchronously guarantee disk durability.
+- `queue: Channel<Save>(UNLIMITED)` has one consumer. Each request captures its `Store`, note ID, immutable document and sequence. Editing snapshots enter the queue after three seconds without edits; superseded queued background snapshots are skipped before encoding. Explicit save/flush requests bypass the delay. Encoding and DAO saving run on IO in order. Only the latest sequence for the same currently open note/store can turn the save indicator to “Saved.”
+- `flush()` cancels pending edit/camera debounce, queues the latest snapshot with a `CompletableDeferred`, and waits for success. Closing or switching aborts when it returns false. `save()` just enqueues; it does not synchronously guarantee disk durability.
 - The separate unlimited `openings` queue processes `(Store, noteId)` in FIFO order on IO, under the root mutex. It re-reads current metadata before updating recency. Widget/history errors are deliberately isolated from saving.
 - `VaultLocks.forRoot(root)` serializes file mutations, journal replay, index rebuild and snapshot staging in this process. `VaultLocks.upload(localId)` serializes repository operations for that vault. Uploads hold the root mutex only while staging, not during network transfer.
 - `VaultCatalog` and `Credentials` each use synchronized monitors around preference access. `RecentNotes` has its own monitor. `NoteWidgets` has one executor for updates. Each `NotebookView` has one PDF executor because `PdfRenderer` access must be serialized.
@@ -102,9 +104,9 @@ Locks are in-process mutexes keyed by absolute path/local ID, not cross-process 
 
 ## Lifecycle and save semantics
 
-`commit(items, before)` pushes one prior item list into history, changes the scene, increments redraw revision and queues a save. `preview(items)` changes the scene without history or persistence. A completed eraser/move/resize gesture commits once using its pre-gesture list.
+`commit(items, before)` pushes one prior item list into history, changes the scene, increments redraw revision and schedules a debounced save. `preview(items)` changes the scene without history or persistence. A completed eraser/move/resize gesture commits once using its pre-gesture list.
 
-Camera changes debounce saving by 350 ms. Writing preferences debounce by 400 ms; the flow captures the store alongside the serialized settings and emits `null` while switching. Settings are also saved explicitly before switching and on editor `ON_STOP`.
+Content and camera changes share a three-second save debounce. The immutable snapshot and sequence are captured immediately so old writes cannot mark new edits saved. Writing preferences debounce by 400 ms; the flow captures the store alongside the serialized settings and emits `null` while switching. Settings are also saved explicitly before switching and on editor `ON_STOP`.
 
 On `ON_STOP`, the editor settles finished native strokes, enqueues a document save and schedules settings persistence. This is best effort, not an OS-guaranteed shutdown transaction. Process termination before a queued write finishes can lose unsaved work. Normal back/switch/export paths use `flush()` where implemented. “Saved” reports completion of local file/index saving, not a GitHub backup.
 

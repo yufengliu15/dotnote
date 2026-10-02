@@ -25,7 +25,9 @@ sequenceDiagram
     DAO-->>UI: success / failure
 ```
 
-`updateNote` re-reads the current record inside the lock before applying a content/title/folder change. This prevents an older save request from restoring an old title or folder. Identical document saves are no-ops and keep `modified` unchanged. Rename/move updates `modified`; renaming/moving a folder rewrites paths without individually changing every note's timestamp.
+`updateNote` re-reads the current record inside the lock before applying a content/title/folder change. This prevents an older save request from restoring an old title or folder. Identical document saves compare inside SQLite and are no-ops, keeping `modified` unchanged. Content saves fetch current metadata only rather than reconstructing the previous document with repeated substring queries. Rename/move updates `modified`; renaming/moving a folder rewrites paths without individually changing every note's timestamp.
+
+Content-only writes to an existing path validate the parsed document without materializing drawing objects and use one AtomicFile write. New files, renames/moves and deletes retain the journal. This avoids duplicating large content in the journal and walking the vault on every edit. Pending journals are recovered before the single-file write.
 
 The file operation precedes the index mutation. They are not a single distributed transaction. If a crash occurs between them, reopening/reloading rebuilds the index from files. If a write succeeds but updating backup configuration fails, the UI can report failure even though the file exists; inspect all layers before assuming the document is absent.
 

@@ -189,3 +189,7 @@ Unknown extra JSON fields are generally ignored and are not preserved by re-enco
 | `cache/` | Temporary upload/export/restore staging; not authoritative |
 
 Repository state and credentials are not part of portable settings. See the [GitHub guide](vaults-and-github-backups.md) for every backup configuration field.
+
+## Fill coverage (0.12.0)
+
+Optional boolean `fill` defaults to false. True requires PEN or HIGHLIGHTER kind, no native `ink`, and an even nonzero `points` count. Each consecutive point pair defines one local filled rectangle. The renderer normalizes adjacent rectangle edges and applies the item's transform. Existing documents need no migration. Older apps ignore the flag and cannot faithfully display or resave fills; use 0.12.0 or later for documents containing them.

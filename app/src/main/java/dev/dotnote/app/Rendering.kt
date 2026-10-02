@@ -238,6 +238,7 @@ class ObjectRenderer(private val vectorHighlights: Boolean = true) {
 
     private fun highlightOutline(item: Item): Path {
         highlightPaths[item.id]?.let { (cached, path) -> if (cached === item) return path }
+        if (item.fill) return fillPath(item).also { highlightPaths.put(item.id, item to it) }
         if (item.points.isEmpty()) return Path()
         paint.strokeWidth = item.width
         paint.style = Paint.Style.STROKE
@@ -259,13 +260,31 @@ class ObjectRenderer(private val vectorHighlights: Boolean = true) {
             .also { highlightPaths.put(item.id, item to it) }
     }
 
+    private fun fillPath(item: Item): Path {
+        highlightPaths[item.id]?.let { (cached, path) -> if (cached === item) return path }
+        return Path()
+            .apply {
+                item.points.chunked(2).forEach { pair ->
+                    if (pair.size == 2) addRect(Bounds.of(pair).rect(), Path.Direction.CW)
+                }
+                // Remove shared scanline edges before either screen or PDF rendering.
+                op(Path(this), Path.Op.UNION)
+                transform(item.transform.matrix())
+            }
+            .also { highlightPaths.put(item.id, item to it) }
+    }
+
     fun draw(canvas: Canvas, item: Item, worldToScreen: Matrix) {
         if (item.kind == "HIGHLIGHTER") {
             drawScene(canvas, listOf(item), worldToScreen)
             return
         }
         canvas.save()
-        if (item.ink != null) {
+        if (item.fill) {
+            paint.style = Paint.Style.FILL
+            paint.color = item.color
+            canvas.drawPath(fillPath(item), paint)
+        } else if (item.ink != null) {
             val cached = strokes[item.id]
             val stroke =
                 cached

@@ -72,6 +72,7 @@ enum class Tool(val label: String) {
     ERASER("Eraser"),
     LASSO("Select"),
     TEXT("Text"),
+    FILL("Fill"),
     LINE("Line"),
     ARROW("Arrow"),
     RECTANGLE("Rectangle"),
@@ -96,6 +97,7 @@ data class Item(
     val image: Boolean = false,
     val text: String? = null,
     val fontSize: Float = 24f,
+    val fill: Boolean = false,
 ) {
     val bounds: Bounds =
         transform
@@ -249,6 +251,10 @@ fun shapeSegments(item: Item): List<Pair<Pt, Pt>> {
 
 fun hitItem(item: Item, p: Pt, radius: Float): Boolean {
     if (item.locked || !item.bounds.outset(radius).contains(p)) return false
+    if (item.fill)
+        return item.points.chunked(2).any {
+            it.size == 2 && item.transform.map(Bounds.of(it)).outset(radius).contains(p)
+        }
     if (item.image || item.kind == "TEXT") return true
     val tolerance = radius + item.width * max(item.transform.sx, item.transform.sy) / 2
     val pts = item.points.map(item.transform::map)
@@ -259,6 +265,12 @@ fun hitItem(item: Item, p: Pt, radius: Float): Boolean {
 
 fun lassoHits(item: Item, polygon: List<Pt>): Boolean {
     if (item.locked || polygon.size < 3) return false
+    if (item.fill)
+        return item.points.chunked(2).any { pair ->
+            val b = item.transform.map(Bounds.of(pair))
+            polygon.any(b::contains) ||
+                listOf(Pt(b.left, b.top), Pt(b.right, b.bottom)).any { insidePolygon(it, polygon) }
+        }
     if (!item.image && item.kind != "TEXT")
         return item.points.any { insidePolygon(item.transform.map(it), polygon) }
     val b = item.bounds
@@ -294,6 +306,7 @@ object DocumentCodec {
             .put("page", i.page)
             .apply {
                 if (i.image) put("image", true)
+                if (i.fill) put("fill", true)
                 if (i.kind == "TEXT") {
                     put("text", i.text)
                     put("fontSize", i.fontSize)
@@ -328,6 +341,16 @@ object DocumentCodec {
                     "Invalid attachment name"
                 }
                 val width = i.getDouble("width").toFloat()
+                val fill = i.optBoolean("fill", false)
+                require(
+                    !fill ||
+                        (kind in listOf("PEN", "HIGHLIGHTER") &&
+                            pts.length() >= 2 &&
+                            pts.length() % 2 == 0 &&
+                            !i.has("ink"))
+                ) {
+                    "Invalid fill coverage"
+                }
                 val image = i.optBoolean("image", false)
                 val content = if (kind == "TEXT") i.getString("text") else null
                 val fontSize = i.optDouble("fontSize", 24.0).toFloat()
@@ -375,6 +398,7 @@ object DocumentCodec {
                     asset = asset,
                     page = page,
                     image = image,
+                    fill = fill,
                     text = content,
                     fontSize = fontSize,
                 )

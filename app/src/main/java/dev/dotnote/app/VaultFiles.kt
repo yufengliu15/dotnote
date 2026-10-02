@@ -276,10 +276,26 @@ class VaultFiles(val root: File) {
 
     fun writeNote(note: Note) {
         require(validId(note.id))
-        DocumentCodec.decode(note.document)
+        val parsed = JSONObject(note.document)
+        DocumentCodec.validate(parsed)
         val path = notePath(note)
         val old = notePaths[note.id]
-        transaction(mapOf(path to encode(note)), listOfNotNull(old).filter { it != path })
+        val body =
+            JSONObject()
+                .put("format", "dotnote")
+                .put("version", 1)
+                .put("id", note.id)
+                .put("title", note.title)
+                .put("modified", note.modified)
+                .put("document", parsed)
+                .put("template", note.isTemplate)
+                .toString()
+        if (old == path) {
+            // A single-file content update is already crash-safe through AtomicFile. A
+            // journal is needed only when publishing/removing multiple paths (rename/move).
+            recover()
+            atomicText(target(path), body)
+        } else transaction(mapOf(path to body), listOfNotNull(old).filter { it != path })
         notePaths[note.id] = path
     }
 

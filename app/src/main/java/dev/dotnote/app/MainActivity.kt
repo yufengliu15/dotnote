@@ -27,6 +27,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -183,6 +185,34 @@ private fun Library(state: AppState) {
         rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) {
             it?.let(state::restore)
         }
+    val drag = remember { LibraryDragState() }
+    var libraryOrigin by remember { mutableStateOf(Offset.Zero) }
+    drag.allowed = { target ->
+        drag.item?.let { item ->
+            if (item.folder)
+                folders
+                    .find { it.id == item.id }
+                    ?.let { source ->
+                        target != source.parentId &&
+                            canMoveFolder(
+                                item.id,
+                                target,
+                                folders.associate { it.id to it.parentId },
+                            )
+                    } == true
+            else notes.find { it.id == item.id }?.let { it.folderId != target } == true
+        } == true
+    }
+    val dropItem: (LibraryDragItem, String?) -> Unit = { item, target ->
+        state.runAction {
+            if (item.folder)
+                state.store.dao
+                    .allFolders()
+                    .find { it.id == item.id }
+                    ?.let { state.store.moveFolder(it, target) }
+            else state.store.dao.moveNote(item.id, target)
+        }
+    }
     val current = folders.find { it.id == state.folderId }
     BackHandler(state.folderId != null) { state.folderId = current?.parentId }
     val breadcrumbs =
@@ -196,272 +226,310 @@ private fun Library(state: AppState) {
             }
             result
         }
-    Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
-        Row(
-            Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 24.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Surface(
-                color = Forest,
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.size(42.dp),
+    Box(Modifier.fillMaxSize().onGloballyPositioned { libraryOrigin = it.boundsInRoot().topLeft }) {
+        Column(Modifier.fillMaxSize().padding(horizontal = 24.dp)) {
+            Row(
+                Modifier.fillMaxWidth().padding(top = 20.dp, bottom = 24.dp),
+                verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text("d.", color = Paper, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Surface(
+                    color = Forest,
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.size(42.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text("d.", color = Paper, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                    }
                 }
-            }
-            Spacer(Modifier.width(12.dp))
-            Column {
-                Text("Dotnote", fontSize = 23.sp, fontWeight = FontWeight.SemiBold)
-                Text(
-                    "A little room to think.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color(0xff6f776d),
-                )
-            }
-            Spacer(Modifier.weight(1f))
-            Box {
-                IconButton(onClick = { menu = true }) {
-                    Icon(Icons.Outlined.MoreVert, "Library options")
-                }
-                DropdownMenu(menu, { menu = false }) {
-                    DropdownMenuItem(
-                        text = { Text("Vaults") },
-                        onClick = {
-                            menu = false
-                            vaults = true
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("GitHub backup & restore") },
-                        onClick = {
-                            menu = false
-                            githubSettings = true
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Back up library") },
-                        onClick = {
-                            menu = false
-                            backup.launch(
-                                "Dotnote-${SimpleDateFormat("yyyy-MM-dd",Locale.US).format(Date())}.zip"
-                            )
-                        },
-                    )
-                    DropdownMenuItem(
-                        text = { Text("Restore backup (merge)") },
-                        onClick = {
-                            menu = false
-                            restore.launch(arrayOf("application/zip", "application/octet-stream"))
-                        },
-                    )
-                    DefaultNotesMenuItem { menu = false }
-                    DropdownMenuItem(
-                        text = { Text("Version & updates") },
-                        onClick = {
-                            menu = false
-                            version = true
-                        },
-                    )
-                }
-            }
-        }
-        Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            TextButton(onClick = { vaults = true }) {
-                Icon(Icons.Outlined.UnfoldMore, "Switch vault")
-                state.vaultVersion
-                Text(
-                    state.catalog.list().find { it.localId == state.store.vaultId }?.name
-                        ?: "My notes"
-                )
-            }
-            if (state.folderId != null)
-                TextButton(onClick = { state.folderId = null }) { Text("All notes") }
-            breadcrumbs.forEach { f ->
-                Icon(Icons.Outlined.ChevronRight, null, Modifier.size(16.dp))
-                TextButton(onClick = { state.folderId = f.id }) { Text(f.name) }
-            }
-        }
-        Row(
-            Modifier.fillMaxWidth().padding(vertical = 16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            OutlinedTextField(
-                query,
-                { query = it },
-                Modifier.weight(1f),
-                placeholder = { Text("Find a note or folder") },
-                leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                singleLine = true,
-                shape = RoundedCornerShape(16.dp),
-            )
-            FilledTonalIconButton(
-                onClick = { dialog = "folder" },
-                modifier = Modifier.size(52.dp),
-            ) {
-                Icon(Icons.Outlined.CreateNewFolder, "New folder")
-            }
-            Button(
-                onClick = { state.newNoteRequested = true },
-                contentPadding = PaddingValues(16.dp),
-                shape = RoundedCornerShape(16.dp),
-            ) {
-                Icon(Icons.Outlined.Add, null)
-                Spacer(Modifier.width(6.dp))
-                Text("New note")
-            }
-        }
-        val visibleFolders =
-            folders.filter {
-                if (query.isBlank()) it.parentId == state.folderId
-                else it.name.contains(query, true)
-            }
-        val visibleNotes =
-            notes.filter {
-                if (query.isBlank()) it.folderId == state.folderId
-                else it.title.contains(query, true)
-            }
-        LazyVerticalGrid(
-            columns = GridCells.Adaptive(220.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
-            contentPadding = PaddingValues(bottom = 24.dp),
-            modifier = Modifier.weight(1f),
-        ) {
-            if (visibleFolders.isNotEmpty()) {
-                item(span = { GridItemSpan(maxLineSpan) }) {
+                Spacer(Modifier.width(12.dp))
+                Column {
+                    Text("Dotnote", fontSize = 23.sp, fontWeight = FontWeight.SemiBold)
                     Text(
-                        "FOLDERS",
-                        fontSize = 11.sp,
-                        letterSpacing = 1.5.sp,
+                        "A little room to think.",
+                        style = MaterialTheme.typography.bodySmall,
                         color = Color(0xff6f776d),
-                        modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
                     )
                 }
-                items(visibleFolders, key = { it.id }) { f ->
-                    Surface(
-                        onClick = {
-                            state.folderId = f.id
-                            query = ""
-                        },
-                        shape = RoundedCornerShape(16.dp),
-                        color = Color(0xffeaeee5),
-                    ) {
-                        Row(
-                            Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Icon(Icons.Outlined.Folder, null, tint = Forest)
-                            Spacer(Modifier.width(12.dp))
-                            Text(
-                                f.name,
-                                Modifier.weight(1f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            ObjectMenu(
-                                onRename = { renameFolder = f },
-                                onMove = { moveFolder = f },
-                                onDelete = { deleteFolder = f },
-                            )
-                        }
+                Spacer(Modifier.weight(1f))
+                Box {
+                    IconButton(onClick = { menu = true }) {
+                        Icon(Icons.Outlined.MoreVert, "Library options")
+                    }
+                    DropdownMenu(menu, { menu = false }) {
+                        DropdownMenuItem(
+                            text = { Text("Vaults") },
+                            onClick = {
+                                menu = false
+                                vaults = true
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("GitHub backup & restore") },
+                            onClick = {
+                                menu = false
+                                githubSettings = true
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Back up library") },
+                            onClick = {
+                                menu = false
+                                backup.launch(
+                                    "Dotnote-${SimpleDateFormat("yyyy-MM-dd",Locale.US).format(Date())}.zip"
+                                )
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Restore backup (merge)") },
+                            onClick = {
+                                menu = false
+                                restore.launch(
+                                    arrayOf("application/zip", "application/octet-stream")
+                                )
+                            },
+                        )
+                        DefaultNotesMenuItem { menu = false }
+                        DropdownMenuItem(
+                            text = { Text("Version & updates") },
+                            onClick = {
+                                menu = false
+                                version = true
+                            },
+                        )
                     }
                 }
             }
-            if (visibleNotes.isNotEmpty())
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Row(Modifier.padding(top = 16.dp, bottom = 4.dp)) {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = { vaults = true }) {
+                    Icon(Icons.Outlined.UnfoldMore, "Switch vault")
+                    state.vaultVersion
+                    Text(
+                        state.catalog.list().find { it.localId == state.store.vaultId }?.name
+                            ?: "My notes"
+                    )
+                }
+                if (state.folderId != null || drag.item != null)
+                    TextButton(
+                        onClick = { state.folderId = null },
+                        modifier = Modifier.libraryDropTarget(drag, null),
+                    ) {
+                        Text("All notes")
+                    }
+                breadcrumbs.forEach { f ->
+                    Icon(Icons.Outlined.ChevronRight, null, Modifier.size(16.dp))
+                    TextButton(
+                        onClick = { state.folderId = f.id },
+                        modifier = Modifier.libraryDropTarget(drag, f.id),
+                    ) {
+                        Text(f.name)
+                    }
+                }
+            }
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                OutlinedTextField(
+                    query,
+                    { query = it },
+                    Modifier.weight(1f),
+                    placeholder = { Text("Find a note or folder") },
+                    leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                    singleLine = true,
+                    shape = RoundedCornerShape(16.dp),
+                )
+                FilledTonalIconButton(
+                    onClick = { dialog = "folder" },
+                    modifier = Modifier.size(52.dp),
+                ) {
+                    Icon(Icons.Outlined.CreateNewFolder, "New folder")
+                }
+                Button(
+                    onClick = { state.newNoteRequested = true },
+                    contentPadding = PaddingValues(16.dp),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Icon(Icons.Outlined.Add, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("New note")
+                }
+            }
+            val visibleFolders =
+                folders.filter {
+                    if (query.isBlank()) it.parentId == state.folderId
+                    else it.name.contains(query, true)
+                }
+            val visibleNotes =
+                notes.filter {
+                    if (query.isBlank()) it.folderId == state.folderId
+                    else it.title.contains(query, true)
+                }
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(220.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+                horizontalArrangement = Arrangement.spacedBy(14.dp),
+                contentPadding = PaddingValues(bottom = 24.dp),
+                modifier = Modifier.weight(1f),
+            ) {
+                if (visibleFolders.isNotEmpty()) {
+                    item(span = { GridItemSpan(maxLineSpan) }) {
                         Text(
-                            if (query.isBlank()) "NOTES" else "MATCHING NOTES",
+                            "FOLDERS",
                             fontSize = 11.sp,
                             letterSpacing = 1.5.sp,
                             color = Color(0xff6f776d),
-                        )
-                        Spacer(Modifier.weight(1f))
-                        Text(
-                            "${visibleNotes.size} · Recently edited",
-                            fontSize = 11.sp,
-                            color = Color(0xff6f776d),
+                            modifier = Modifier.padding(top = 12.dp, bottom = 4.dp),
                         )
                     }
-                }
-            items(visibleNotes, key = { it.id }) { note ->
-                Surface(
-                    onClick = { state.open(note.id) },
-                    shape = RoundedCornerShape(18.dp),
-                    color = Color.White,
-                    border = BorderStroke(1.dp, Color(0xffe0e4da)),
-                ) {
-                    Column {
-                        NotePreview(state.store, note, Modifier.fillMaxWidth().height(112.dp))
-                        Row(
-                            Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
+                    items(visibleFolders, key = { it.id }) { f ->
+                        Surface(
+                            onClick = {
+                                state.folderId = f.id
+                                query = ""
+                            },
+                            modifier =
+                                Modifier.libraryDropTarget(drag, f.id)
+                                    .libraryDragSource(
+                                        drag,
+                                        LibraryDragItem(f.id, f.name, true),
+                                        dropItem,
+                                    ),
+                            shape = RoundedCornerShape(16.dp),
+                            color = Color(0xffeaeee5),
                         ) {
-                            Column(Modifier.weight(1f)) {
+                            Row(
+                                Modifier.padding(start = 16.dp, top = 8.dp, bottom = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Icon(Icons.Outlined.Folder, null, tint = Forest)
+                                Spacer(Modifier.width(12.dp))
                                 Text(
-                                    note.title,
-                                    fontWeight = FontWeight.Medium,
+                                    f.name,
+                                    Modifier.weight(1f),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
-                                Text(
-                                    (if (note.isTemplate) "Template · " else "") +
-                                        SimpleDateFormat("MMM d · h:mm a", Locale.getDefault())
-                                            .format(Date(note.modified)),
-                                    fontSize = 11.sp,
-                                    color = Color(0xff737a70),
+                                ObjectMenu(
+                                    onRename = { renameFolder = f },
+                                    onMove = { moveFolder = f },
+                                    onDelete = { deleteFolder = f },
                                 )
                             }
-                            ObjectMenu(
-                                onRename = { renameNote = note },
-                                onMove = { moveNote = note },
-                                onDelete = { deleteNote = note },
+                        }
+                    }
+                }
+                if (visibleNotes.isNotEmpty())
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Row(Modifier.padding(top = 16.dp, bottom = 4.dp)) {
+                            Text(
+                                if (query.isBlank()) "NOTES" else "MATCHING NOTES",
+                                fontSize = 11.sp,
+                                letterSpacing = 1.5.sp,
+                                color = Color(0xff6f776d),
+                            )
+                            Spacer(Modifier.weight(1f))
+                            Text(
+                                "${visibleNotes.size} · Recently edited",
+                                fontSize = 11.sp,
+                                color = Color(0xff6f776d),
                             )
                         }
                     }
-                }
-            }
-            if (visibleNotes.isEmpty() && visibleFolders.isEmpty())
-                item(span = { GridItemSpan(maxLineSpan) }) {
-                    Column(
-                        Modifier.fillMaxWidth().padding(vertical = 60.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                items(visibleNotes, key = { it.id }) { note ->
+                    Surface(
+                        onClick = { state.open(note.id) },
+                        modifier =
+                            Modifier.libraryDragSource(
+                                drag,
+                                LibraryDragItem(note.id, note.title, false),
+                                dropItem,
+                            ),
+                        shape = RoundedCornerShape(18.dp),
+                        color = Color.White,
+                        border = BorderStroke(1.dp, Color(0xffe0e4da)),
                     ) {
-                        Box(
-                            Modifier.size(128.dp)
-                                .clip(RoundedCornerShape(28.dp))
-                                .background(Color(0xffe7edde)),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            DotPattern(Modifier.fillMaxSize())
-                            Icon(Icons.Outlined.Draw, null, Modifier.size(48.dp), tint = Forest)
-                        }
-                        Text(
-                            if (query.isBlank()) "Space for your next idea." else "No matches yet.",
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Medium,
-                        )
-                        Text(
-                            if (query.isBlank()) "An endless canvas, a pen, and no distractions."
-                            else "Try another title.",
-                            color = Color(0xff6f776d),
-                        )
-                        if (query.isBlank())
-                            Button(onClick = { state.newNoteRequested = true }) {
-                                Text("Create a note")
+                        Column {
+                            NotePreview(state.store, note, Modifier.fillMaxWidth().height(112.dp))
+                            Row(
+                                Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(
+                                        note.title,
+                                        fontWeight = FontWeight.Medium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        (if (note.isTemplate) "Template · " else "") +
+                                            SimpleDateFormat("MMM d · h:mm a", Locale.getDefault())
+                                                .format(Date(note.modified)),
+                                        fontSize = 11.sp,
+                                        color = Color(0xff737a70),
+                                    )
+                                }
+                                ObjectMenu(
+                                    onRename = { renameNote = note },
+                                    onMove = { moveNote = note },
+                                    onDelete = { deleteNote = note },
+                                )
                             }
+                        }
                     }
                 }
+                if (visibleNotes.isEmpty() && visibleFolders.isEmpty())
+                    item(span = { GridItemSpan(maxLineSpan) }) {
+                        Column(
+                            Modifier.fillMaxWidth().padding(vertical = 60.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            Box(
+                                Modifier.size(128.dp)
+                                    .clip(RoundedCornerShape(28.dp))
+                                    .background(Color(0xffe7edde)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                DotPattern(Modifier.fillMaxSize())
+                                Icon(Icons.Outlined.Draw, null, Modifier.size(48.dp), tint = Forest)
+                            }
+                            Text(
+                                if (query.isBlank()) "Space for your next idea."
+                                else "No matches yet.",
+                                fontSize = 24.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                            Text(
+                                if (query.isBlank())
+                                    "An endless canvas, a pen, and no distractions."
+                                else "Try another title.",
+                                color = Color(0xff6f776d),
+                            )
+                            if (query.isBlank())
+                                Button(onClick = { state.newNoteRequested = true }) {
+                                    Text("Create a note")
+                                }
+                        }
+                    }
+            }
         }
+        LibraryDragPreview(drag, libraryOrigin)
     }
     if (vaults) VaultManagerDialog(state) { vaults = false }
-    if (version) UpdateDialog(beforeInstall = { state.saveWriting(); state.flush() }) { version = false }
+    if (version)
+        UpdateDialog(
+            beforeInstall = {
+                state.saveWriting()
+                state.flush()
+            }
+        ) {
+            version = false
+        }
     if (githubSettings) GitHubSettings(state) { githubSettings = false }
     if (dialog != null)
         NameDialog("New folder", "") { value ->
@@ -1086,7 +1154,16 @@ internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() ->
             },
             confirmButton = { TextButton(onClick = { pages = false }) { Text("Close") } },
         )
-    if (version) UpdateDialog(beforeInstall = { canvas?.settle(); state.saveWriting(); state.flush() }) { version = false }
+    if (version)
+        UpdateDialog(
+            beforeInstall = {
+                canvas?.settle()
+                state.saveWriting()
+                state.flush()
+            }
+        ) {
+            version = false
+        }
     if (help)
         AlertDialog(
             onDismissRequest = { help = false },
@@ -1102,6 +1179,7 @@ internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() ->
 
 private fun toolIcon(tool: Tool): ImageVector =
     when (tool) {
+        Tool.FILL -> Icons.Outlined.FormatColorFill
         Tool.PEN -> Icons.Outlined.Edit
         Tool.HIGHLIGHTER -> Icons.Outlined.BorderColor
         Tool.ERASER -> Icons.Outlined.AutoFixNormal
@@ -1125,13 +1203,15 @@ private fun ToolStrip(
     beforeAction: () -> Unit,
     onEditColor: (Int) -> Unit,
 ) {
+    var fillMenu by remember { mutableStateOf(false) }
     val shapeTool = state.tool.ordinal >= Tool.LINE.ordinal
-    val tools = listOf(Tool.PEN, Tool.HIGHLIGHTER, Tool.ERASER, Tool.LASSO, Tool.TEXT)
+    val tools = listOf(Tool.PEN, Tool.HIGHLIGHTER, Tool.ERASER, Tool.LASSO, Tool.TEXT, Tool.FILL)
     val content: @Composable () -> Unit = {
         tools.forEach { tool ->
             ToolButton(tool.label, toolIcon(tool), state.tool == tool) {
                 beforeAction()
                 state.tool = tool
+                if (tool == Tool.FILL) fillMenu = true
                 state.selection = emptySet()
             }
         }
@@ -1143,6 +1223,31 @@ private fun ToolStrip(
             beforeAction()
             onShapes()
         }
+        Box {
+            DropdownMenu(expanded = fillMenu, onDismissRequest = { fillMenu = false }) {
+                Row(
+                    Modifier.padding(horizontal = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FilterChip(
+                        selected = !state.fillHighlighter,
+                        onClick = {
+                            state.fillHighlighter = false
+                            fillMenu = false
+                        },
+                        label = { Text("Pen fill") },
+                    )
+                    FilterChip(
+                        selected = state.fillHighlighter,
+                        onClick = {
+                            state.fillHighlighter = true
+                            fillMenu = false
+                        },
+                        label = { Text("Highlighter base") },
+                    )
+                }
+            }
+        }
         if (horizontal) VerticalDivider(Modifier.height(32.dp).padding(horizontal = 5.dp))
         else HorizontalDivider(Modifier.width(40.dp).padding(vertical = 5.dp))
         state.palette.forEachIndexed { index, color ->
@@ -1152,7 +1257,12 @@ private fun ToolStrip(
                     .combinedClickable(
                         onClickLabel = "Use color ${Integer.toHexString(color)}",
                         onLongClickLabel = "Edit color slot ${index + 1}",
-                        onClick = { state.color = color },
+                        onClick = {
+                            beforeAction()
+                            state.color = color
+                            state.tool = Tool.PEN
+                            state.selection = emptySet()
+                        },
                         onLongClick = {
                             beforeAction()
                             onEditColor(index)

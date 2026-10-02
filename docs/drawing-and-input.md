@@ -29,7 +29,7 @@ The view intercepts its touch stream and requests the parent not intercept it. T
 1. At begin, settle already-finished native strokes, capture the pre-gesture item list, world start point and active tool, request unbuffered dispatch, and record the real down event.
 2. Build an inverse world-to-screen matrix and start native live authoring with the prepared brush.
 3. On movement, send the real MotionEvent plus optional `MotionEventPredictor` prediction to the native overlay. Recycle predicted events after use. Independently append real historical/current samples to a `MutableStrokeInputBatch`.
-4. On owned pointer-up, encode the real recorded batch directly into an `Item` (without constructing another native mesh), register native-stroke-ID → item-ID handoff, and **commit/save immediately**. Then tell the native authoring view to finish.
+4. On owned pointer-up, encode the real recorded batch directly into an `Item` (without constructing another native mesh), register native-stroke-ID → item-ID handoff, and **commit immediately and schedule autosave**. Then tell the native authoring view to finish.
 5. Until native rendering announces completion, hide that item from completed scene rendering. The live layer still displays it, avoiding a double-dark stroke.
 6. The finished-strokes listener removes the handoff mapping, invalidates the completed scene and removes finished native strokes. `settle()` also drains already-finished strokes before relevant UI actions.
 
@@ -104,3 +104,9 @@ Paint order is paper → dots → visible PDF pages → highlighter layer → pe
 `ACTION_CANCEL` restores the captured scene without committing partial edits. A completed pen save does not wait for asynchronous display handoff. However, editor shutdown or process death during a still-active, unfinished gesture is not a guaranteed recovery of that gesture. Save queues and lifecycle callbacks do not make unsaved RAM durable.
 
 Relevant tests are `DocumentTest`, `GesturePipelineTest`, `NativePipelineTest`, `EditorUpdateTest`, `HighlighterPerformanceTest`, `VectorPerformanceTest`, `SceneResourcesTest`, and `InkStartupTest`; see the [test guide](build-test-release.md) for their precise scope and hardware limitations.
+
+## Bucket fill (0.12.0)
+
+Fill opens a horizontal pair of Pen fill / Highlighter base buttons; both retain the selected palette colour. A stylus or finger tap floods the same-colour connected region of the visible scene, including visible PDF/image content. Finger drags still pan. Processing runs off the UI thread on a raster capped at 1024×1024; PDF pages are rendered/recycled individually, not across the whole deck. Regions reaching the viewport edge are rejected; zoom out until the closed boundary is fully visible. Very thin boundaries at low zoom can leak and be rejected.
+
+The resulting item stores vector scanline rectangles with `fill: true` and kind PEN or HIGHLIGHTER. Rendering normalizes shared edges and uses the existing constant-opacity highlighter layer. Fills are single undoable/selectable/recolourable/erasable objects; transforms, reopen, backups and PDF export preserve coverage. Palette taps settle input, select the colour, clear selection and activate Pen.

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.12.1 — 2026-10-02
+
+- Deliver the colour-to-Pen, held folder dragging, Pen/Highlighter bucket fill and faster three-second autosaving changes from the 0.12.0 development snapshot through the signed GitHub Actions release workflow. Android versionCode: 23.
+- Require publishing through Release Dotnote after every completed deliverable app build; local APK delivery alone is insufficient unless explicitly requested.
+
+## 0.12.0 — 2026-10-01
+
+- Tapping a palette colour activates Pen. Long-press and drag notes/folders into folder cards or parent breadcrumbs; the item stays held until release. Invalid folder cycles are rejected.
+- Added bucket Fill with side-by-side Pen fill and Highlighter base options using the selected colour. Closed areas must be fully visible; fills support selection, transforms, undo/reopen, backups and PDF export.
+- Edits and camera changes save after three seconds of inactivity; close, switch, export and background requests bypass the delay. Superseded queued autosaves are skipped. Content saves avoid loading the old large document, rebuilding drawing objects, duplicating the note into a journal, and walking the vault.
+- Android versionCode: 22. Portable fill coverage adds an optional `fill` field, default false for existing notes. Older builds do not render new fills correctly.
+
 ## 0.11.2 — 2026-10-01
 
 - Release workflow runs now publish the signed APK and create the GitHub Release by default after validation passes. Validation-only runs remain an explicit opt-out. Android versionCode: 21.

@@ -5,7 +5,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /** Write files before updating the disposable Room index. Reopen repairs a stale index. */
-class FileLibraryDao(private val store: Store, private val index: LibraryDao) : LibraryDao {
+class FileLibraryDao(private val store: Store, private val index: RoomLibraryDao) : LibraryDao {
     override fun folders() = index.folders()
 
     override fun notes() = index.notes()
@@ -122,10 +122,25 @@ class FileLibraryDao(private val store: Store, private val index: LibraryDao) : 
     override suspend fun moveNote(id: String, folder: String?) =
         updateNote(id) { it.copy(folderId = folder, modified = System.currentTimeMillis()) }
 
-    override suspend fun save(id: String, document: String, modified: Long) =
-        updateNote(id) {
-            if (it.document == document) it else it.copy(document = document, modified = modified)
+    override suspend fun save(id: String, document: String, modified: Long) = mutate {
+        // Compare inside SQLite rather than reloading the previous large JSON in chunks.
+        if (index.documentMatches(id, document) != false) false
+        else {
+            val current = index.noteSummary(id) ?: return@mutate false
+            val updated =
+                Note(
+                    current.id,
+                    current.folderId,
+                    current.title,
+                    modified,
+                    document,
+                    current.isTemplate,
+                )
+            store.files.writeNote(updated)
+            index.put(updated)
+            true
         }
+    }
 
     override suspend fun clearNotes(): Unit =
         error("Clear is only supported on the disposable index")

@@ -16,6 +16,7 @@ The library contains the app title/tagline, vault chooser, folder breadcrumbs, s
 - A nonblank query searches folder names and note titles across the active vault, case-insensitively. It does not search handwriting, PDF text, or other vaults.
 - Folder lists sort alphabetically through Room; notes sort by modification time. Entering a folder clears search.
 - Back in a nested folder moves to its parent. Opening a note loads its saved camera and scene.
+- Long-press a card and drag it to a folder or a parent breadcrumb (All notes means root). The lifted label follows the pointer until release; valid targets highlight, cancellation/outside drops do nothing, and self/descendant/same-parent drops are excluded.
 - Object menus support rename, move, delete. A move dialog navigates existing destination folders; folder moves reject self/descendant destinations. Delete requires confirmation. Nonempty folders cannot be deleted.
 - New folder creates a child of the current folder. New note opens the shared creation dialog rather than immediately creating an empty file.
 
@@ -107,3 +108,5 @@ Do not add network/account requirements to ordinary note creation or editing. Wi
 ## System notes and lock-screen entry
 
 See [default notes app integration](default-notes-app.md). Android CREATE_NOTE launches a separate quick editor rather than the library, using a fresh note in the current vault root. Close saves and finishes the system editor. Its bottom toolbar scrolls in narrow windows; the library, import/export and account menus are absent. Normal launcher/widget flows retain the existing folder-picker and library navigation.
+
+Fill opens horizontal Pen fill and Highlighter base choices and retains the selected colour. Tap a closed area fully visible on the canvas; finger drags pan. Tapping a palette colour returns to Pen. Edits save after three seconds of inactivity; leaving/backgrounding requests an immediate save.

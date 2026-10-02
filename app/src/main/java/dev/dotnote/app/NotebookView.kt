@@ -269,10 +269,13 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
             }
             val textTap =
                 !panDragged &&
-                    state.tool == Tool.TEXT &&
+                    (state.tool == Tool.TEXT || state.tool == Tool.FILL) &&
                     hypot(e.x - panStart.x, e.y - panStart.y) <= scrollConfig.scaledTouchSlop
             clearVelocity()
-            if (textTap) state.requestText(world(e, 0))
+            if (textTap) {
+                if (state.tool == Tool.FILL) requestFill(world(e, 0))
+                else state.requestText(world(e, 0))
+            }
         }
     }
 
@@ -522,13 +525,21 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
             return true
         }
         if (action == MotionEvent.ACTION_DOWN) {
-            if (state.fingerDrawing && state.tool != Tool.TEXT) begin(event, index)
+            if (state.fingerDrawing && state.tool != Tool.TEXT && state.tool != Tool.FILL)
+                begin(event, index)
             else {
                 navigation = true
                 navigate(event)
             }
         } else if (navigation) navigate(event) else handleOwned(event)
         return true
+    }
+
+    private fun requestFill(point: Pt) {
+        val camera = state.document.camera
+        val a = camera.world(Pt(0f, 0f))
+        val b = camera.world(Pt(width / density, height / density))
+        state.fillAt(point, Bounds(a.x, a.y, b.x, b.y))
     }
 
     private fun begin(e: MotionEvent, index: Int) {
@@ -564,7 +575,8 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
                 recordInputs(e, index)
                 if (!high) activeStroke = ink.startStroke(e, pointer, recordedBrush!!, inverse)
             }
-            Tool.TEXT -> state.selection = emptySet()
+            Tool.TEXT,
+            Tool.FILL -> state.selection = emptySet()
             Tool.ERASER -> erase(start, start)
             Tool.LASSO -> {
                 originalBounds = selectionBounds()
@@ -617,13 +629,15 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
         }
         if (e.actionMasked != MotionEvent.ACTION_MOVE && !released) return
         val p = world(e, i)
-        if (activeTool == Tool.TEXT) {
+        if (activeTool == Tool.TEXT || activeTool == Tool.FILL) {
             if (hypot(p.x - start.x, p.y - start.y) > 8f / state.document.camera.zoom)
                 textDragged = true
             if (released) {
                 pointer = -1
                 gestureBefore = null
-                if (!textDragged) state.requestText(start)
+                if (!textDragged) {
+                    if (activeTool == Tool.FILL) requestFill(start) else state.requestText(start)
+                }
                 textDragged = false
             }
             return

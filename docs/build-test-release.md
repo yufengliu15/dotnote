@@ -52,12 +52,13 @@ Use `adb devices` to confirm the intended target; pass `-s <serial>` when more t
 
 Local snapshots remain debug-signed personal-test builds. An explicitly signed non-debuggable release build and manually triggered GitHub Actions workflow are now configured; the release environment restricts the configured signing secrets to main, and workflow dispatch defaults to publishing the verified APK and GitHub Release after all checks pass. There is no Play Store pipeline. See [app updates and free distribution](app-updates.md).
 
-## Test inventory: 44 JVM tests
+## Test inventory: 46 JVM tests
 
 Tests are in [`app/src/test/java/dev/dotnote/app/`](../app/src/test/java/dev/dotnote/app/).
 
 | Class | Count | Contracts |
 | --- | --- | --- |
+| `FillRulesTest` | 2 | Closed-region flood coverage, holes/open edges; fill codec/defaults, invalid combinations and transformed hit tests |
 | `DocumentTest` | 14 | Scan/decode validation equivalence; Unicode text/size codec roundtrip, rectangular selection/transforms and malformed text rejection; camera zoom anchor; valid/invalid/corrupt folder cycles; codec round trip with attachments/transforms; gesture history and redo invalidation; geometric hit tests including locked PDFs and selectable images; concave polygon selection; transform composition; attachment traversal rejection; unsupported version rejection |
 | `DocumentImportTest` | 2 | File/MIME classification and bounded input copying |
 | `GitHubSignInTest` | 10 | Browser-return gate, same-code DNS retry, approved-token retention, slowdown/timeout backoff, code expiry, denial, cancellation, initial-code retries, TLS/auth classification |
@@ -91,6 +92,8 @@ Tests are in [`app/src/androidTest/java/dev/dotnote/app/`](../app/src/androidTes
 | `HighlighterPerformanceTest` | 2 | Live overlap/chunk opacity, pen layering, reopen/cancel rendering; 2,400-point live-stroke software frame budget |
 | `VectorPerformanceTest` | 2 | 900 native strokes reuse meshes and preserve pixels across redraws; zoom/transforms reuse geometry; recolor/input edits invalidate; handoff visibility and shape transforms |
 | `InkStartupTest` | 1 | `firstPenStrokeIsVisibleBeforePenUp`: first-stroke dispatch and screenshot visibility before ACTION_UP, plus no phantom warmup item |
+
+`QualityOfLifeTest` adds two Android tests for a three-second resettable edit debounce, immediate large-note flush, no delayed duplicate, file-authoritative reopen, bucket pixels, marker opacity and exported PDF coverage. `QualityOfLifeUiTest` adds a real-pointer test for held note/folder drops in both directions, palette-to-Pen activation and horizontal Fill choices, a real finger fill tap, undo/redo and close.
 
 `NotePreviewTest` adds three Android tests for snapshot pixels/centering, a 40-page PDF using only its first page with annotations (later assets deliberately unavailable) and blank notes, and cache reuse/edit invalidation/vault isolation.
 
@@ -148,6 +151,15 @@ Run the relevant checks plus compilation/lint for source changes. Broaden testin
 5. Add all three widgets, resize/orient, confirm calendar dates/today and app-only tap, create in another vault's nested folder, test recent order and renamed/deleted targets. Rename a vault and verify widget/file-provider labels.
 6. Authorize GitHub in the browser and return to Dotnote to complete sign-in; then back up/restore a private test vault, revoke credentials, interrupt network/ref acknowledgement, and create a remote conflict. Confirm local notes remain usable throughout.
 7. Select Dotnote in Lenovo's default notes-app settings, launch using the system pen shortcut while unlocked and locked, resize/rotate the quick-note window, and check the saved notes after unlocking. See [default notes app](default-notes-app.md).
+
+## Required delivery: GitHub Actions release
+
+After completing a deliverable app build, the work is not complete until **Release Dotnote** (`.github/workflows/release.yml`) has run with publishing enabled. The user has given standing authorization to commit the scoped changes, push them to `main`, and publish through this workflow. A local APK or a validation-only run is insufficient unless the user explicitly asks for that exception. Documentation-only changes need no application release.
+
+1. Preserve unrelated edits; commit only the intended app, tests and release documentation. Use a clean release source and advance the version past all delivered snapshots.
+2. Integrate onto current `main` without rewriting history and push. The workflow deliberately only runs on `main` to protect signing secrets.
+3. Dispatch `gh workflow run release.yml --ref main -f publish=true -f stable=false`. Use `stable=true` only when the user requests a stable release.
+4. Follow the run to completion. Investigate and fix failures without bypassing checks; verify the published tag, APK, manifest and source commit. Return the GitHub release link to the user.
 
 ## Versioning and source control
 
