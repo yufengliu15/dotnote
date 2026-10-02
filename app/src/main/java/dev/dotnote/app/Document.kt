@@ -117,6 +117,29 @@ data class Camera(val x: Float = 40f, val y: Float = 40f, val zoom: Float = 1f) 
     }
 }
 
+/** Shared centering for the editor and small library snapshots. */
+internal fun fittedCamera(
+    bounds: Bounds?,
+    width: Float,
+    height: Float,
+    padding: Float = 40f,
+    minZoom: Float = .08f,
+    maxZoom: Float = 2f,
+): Camera {
+    val b = bounds ?: Bounds(0f, 0f, 800f, 700f)
+    val zoom =
+        min(
+                (width - padding * 2) / max(100f, b.width),
+                (height - padding * 2) / max(100f, b.height),
+            )
+            .coerceIn(minZoom, maxZoom)
+    return Camera(
+        (width - b.width * zoom) / 2 - b.left * zoom,
+        (height - b.height * zoom) / 2 - b.top * zoom,
+        zoom,
+    )
+}
+
 data class Document(
     val items: List<Item> = emptyList(),
     val camera: Camera = Camera(),

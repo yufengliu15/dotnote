@@ -75,6 +75,7 @@ Tests are in [`app/src/androidTest/java/dev/dotnote/app/`](../app/src/androidTes
 | Class | Count | Test methods and coverage |
 | --- | --- | --- |
 | `TextTemplateTest` | 6 | Resize vs proportional Scale, wrapping-width retention and explicit paragraphs; text dialog/taps, rotation, edit/history, selection/move/resize/recolor/delete/reopen; screen/PDF text pixels; independent templates with attachment/backup/rebuild; template creation/picker UI; non-destructive Room 1→2 migration |
+| `LargeNoteStorageTest` | 2 | Oversized existing documents reproduce the old CursorWindow failure; save/no-op/reopen, folder/note rename/move/delete, snapshot and ZIP merge restore; Unicode and exact/empty chunk boundaries |
 | `StartupLoadingTest` | 2 | Unbound-vault local-loading wording/no empty-list flash; 160-note/32,000-object scan/index/reopen measurement and stale-index recovery |
 | `NativePipelineTest` | 2 | `nativeInkSurvivesSerializationAndRenders`; `pdfImportExportBackupRestoreAndFailedRestoreAreConsistent` |
 | `FlingNavigationTest` | 3 | 40-page PDF fling, speed/direction/zoom, decay and saved camera; touch/stylus/page/fit/release interruption; slow/cancelled/pinch/drawing exclusion |
@@ -88,6 +89,8 @@ Tests are in [`app/src/androidTest/java/dev/dotnote/app/`](../app/src/androidTes
 | `HighlighterPerformanceTest` | 2 | Live overlap/chunk opacity, pen layering, reopen/cancel rendering; 2,400-point live-stroke software frame budget |
 | `VectorPerformanceTest` | 2 | 900 native strokes reuse meshes and preserve pixels across redraws; zoom/transforms reuse geometry; recolor/input edits invalidate; handoff visibility and shape transforms |
 | `InkStartupTest` | 1 | `firstPenStrokeIsVisibleBeforePenUp`: first-stroke dispatch and screenshot visibility before ACTION_UP, plus no phantom warmup item |
+
+`NotePreviewTest` adds three Android tests for snapshot pixels/centering, a 40-page PDF using only its first page with annotations (later assets deliberately unavailable) and blank notes, and cache reuse/edit invalidation/vault isolation.
 
 `CalendarWidgetTest` adds two Android tests for complete month grids at three sizes, today and year rollover, static preview inflation, and the actual calendar PendingIntent opening the app without requesting note creation.
 

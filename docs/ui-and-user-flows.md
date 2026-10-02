@@ -19,6 +19,8 @@ The library contains the app title/tagline, vault chooser, folder breadcrumbs, s
 - Object menus support rename, move, delete. A move dialog navigates existing destination folders; folder moves reject self/descendant destinations. Delete requires confirmation. Nonempty folders cannot be deleted.
 - New folder creates a child of the current folder. New note opens the shared creation dialog rather than immediately creating an empty file.
 
+Note cards show small centered snapshots using the shared editor fit calculation, with a lower zoom floor so scenes fit. For a scene taller than three times its width containing a non-image PDF, the preview fits only the first PDF page in scene order and clips intersecting annotations to that page; it never opens later pages. Only composed cards request previews; decoding/rendering is serialized on IO and an 8 MiB in-memory LRU caches results by vault, note, modification time and size. Imported pages render and recycle one at a time. Blank/loading/unavailable previews use a quiet paper background. Previews never change saved cameras, content or recency.
+
 Library overflow actions:
 
 | Label | Action |

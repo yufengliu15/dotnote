@@ -2,13 +2,23 @@
 
 An offline, native Kotlin notebook for Android tablets. Built with Jetpack Compose, AndroidX Ink 1.0, Room, and Android's PDF renderer. Works offline without an account. Optional GitHub backups; no subscriptions or analytics.
 
+## 0.10.1 note previews
+
+The notes grid shows small, centered snapshots of saved content. Visible cards load in the background and reuse a bounded image cache. Long notes containing PDFs preview the first page of the first PDF with its annotations, instead of shrinking the whole deck.
+
+## 0.9.2 large-note saving
+
+Fixed “Row too big to fit into CursorWindow” when saving or reopening a large note. Document reads now use small chunks, including folder operations, backups and legacy migration. Existing files and the database schema are retained; install as an update without clearing app data.
+
+Current app version: **0.10.1 / code 18**. See [VALIDATION.md](VALIDATION.md) for test results.
+
 ## 0.9.1 text resizing and local startup
 
 Select text and choose **Resize** to change its wrapping width at the same font size. Drag the corner handle horizontally; the box height fits the resulting lines. Choose **Scale** to enlarge or shrink the existing layout proportionally. Editing text retains its box width. Explicit paragraph breaks remain intact.
 
 Startup loads local notes rather than syncing a repository. Its messages now identify opening the local vault, reading local notes and updating the note list. File validation avoids redundant document parsing and drawing-object construction, index writes are batched, and backup scheduling runs off the UI thread. The library appears after local loading, avoiding an empty-list flash.
 
-Current app version: **0.9.1 / code 15**. See [VALIDATION.md](VALIDATION.md) for measured emulator timings and test results.
+The text/startup release was **0.9.1 / code 15**. See [VALIDATION.md](VALIDATION.md) for measured emulator timings and test results.
 
 ## 0.9.0 text and templates
 
@@ -60,7 +70,7 @@ Start with [docs/README.md](docs/README.md) for the implementation guide: archit
 
 ## Install
 
-Install `dist/dotnote-0.9.1.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
+Install `dist/dotnote-0.10.1.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. This is a development build signed with a debug key, suitable for personal testing, not a Play Store release.
 
 Install this APK over the previous Dotnote build to keep your library.
 

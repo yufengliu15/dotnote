@@ -44,7 +44,7 @@ All paths below are relative to this documentation directory. The table covers e
 | [Rendering.kt](../app/src/main/java/dev/dotnote/app/Rendering.kt) | Brush families, input serialization, `ObjectRenderer`, `PdfPageSource`, `PdfFiles.import/export`, Android matrix conversions |
 | [TextTool.kt](../app/src/main/java/dev/dotnote/app/TextTool.kt) | Note-scoped text drafts/dialog, StaticLayout measurement and text item construction |
 | [ColorPicker.kt](../app/src/main/java/dev/dotnote/app/ColorPicker.kt) | Shared hue/saturation wheel, brightness slider, hex input, opaque selected color |
-| [Store.kt](../app/src/main/java/dev/dotnote/app/Store.kt) | Room entities/DAO/database; `Store` initialization, old database migration, file-to-index rebuild, legacy ZIP backup/restore |
+| [Store.kt](../app/src/main/java/dev/dotnote/app/Store.kt) | Room entities/DAO/database and transactional chunked document reads; `Store` initialization, old database migration, file-to-index rebuild, legacy ZIP backup/restore |
 | [FileLibraryDao.kt](../app/src/main/java/dev/dotnote/app/FileLibraryDao.kt) | `LibraryDao` wrapper: files first, index second; mutation locking, no-op suppression, recency metadata updates |
 | [VaultFiles.kt](../app/src/main/java/dev/dotnote/app/VaultFiles.kt) | Path validation, atomic text, digest functions, JSON files, journal replay, directory layout, note/folder moves, snapshot |
 | [VaultCatalog.kt](../app/src/main/java/dev/dotnote/app/VaultCatalog.kt) | `VaultInfo`, vault creation/list/selection/rename/publish; local backup configuration, dirty revisions, `VaultLocks`, delay calculation |

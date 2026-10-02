@@ -397,21 +397,7 @@ private fun Library(state: AppState) {
                     border = BorderStroke(1.dp, Color(0xffe0e4da)),
                 ) {
                     Column {
-                        Box(Modifier.fillMaxWidth().height(112.dp).background(Color(0xfff2f4ec))) {
-                            DotPattern(Modifier.fillMaxSize())
-                            Icon(
-                                Icons.Outlined.Description,
-                                null,
-                                Modifier.padding(20.dp).size(34.dp),
-                                tint = Forest,
-                            )
-                            Text(
-                                "∞",
-                                fontSize = 36.sp,
-                                color = Forest.copy(alpha = .22f),
-                                modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-                            )
-                        }
+                        NotePreview(state.store, note, Modifier.fillMaxWidth().height(112.dp))
                         Row(
                             Modifier.padding(start = 16.dp, top = 12.dp, bottom = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,

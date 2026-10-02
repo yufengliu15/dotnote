@@ -322,14 +322,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
 
     fun fit() {
         settle()
-        val b = state.document.bounds ?: Bounds(0f, 0f, 800f, 700f)
-        val w = width / density
-        val h = height / density
-        val z =
-            min((w - 80) / max(100f, b.width), (h - 80) / max(100f, b.height)).coerceIn(.08f, 2f)
-        state.camera(
-            Camera((w - b.width * z) / 2 - b.left * z, (h - b.height * z) / 2 - b.top * z, z)
-        )
+        state.camera(fittedCamera(state.document.bounds, width / density, height / density))
         refresh()
     }
 

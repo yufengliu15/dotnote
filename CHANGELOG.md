@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.10.1 — 2026-10-01
+
+- Long notes containing PDFs now preview only the first page of the first PDF, including annotations within that page. Other pages are not rendered. Ordinary notes keep full-scene previews. Android versionCode: 18.
+
+## 0.10.0 — 2026-10-01
+
+- Added centered note snapshots to the library grid using the editor’s shared fit calculation and renderer. Visible cards load serially off the UI thread, cache up to 8 MiB of images, and refresh by vault, note and modification time. PDF pages render and recycle one at a time. Android versionCode: 17.
+
+## 0.9.2 — 2026-10-01
+
+- Fixed Android CursorWindow overflow when a note's serialized document outgrows a database row read. Save, open, rename/move/delete, folder operations, ZIP backup/restore and legacy migration now read document content in bounded chunks within a consistent Room transaction.
+- Preserved note files, Room schema 2, no-op save timestamps and Unicode across chunk boundaries. Added oversized-note and boundary regressions. Android versionCode: 16.
+
 ## 0.9.1 — 2026-10-01
 
 - Added Resize and Scale choices for selected text. Resize reflows words at the existing font size and fits the height to the lines; Scale preserves wrapping and scales text selections proportionally. Editing retains the chosen box width. No document migration is needed.

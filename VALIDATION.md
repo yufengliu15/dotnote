@@ -1,3 +1,50 @@
+# 0.10.1 long-note preview validation
+
+Validated October 1, 2026 with cached JDK 20 / Android SDK 36 and the existing disposable Android 16 ARM64 emulator. App version **0.10.1 / code 18**.
+
+- Debug app and instrumentation assembly, all **38 JVM tests**, lint and `git diff --check` passed. Lint reports 0 errors and 40 warnings.
+- All **3 NotePreviewTest Android tests passed**. The 40-page fixture now checks a readable first-page width, visible annotations and paper outside the page. Every later PDF asset is deliberately missing, proving the preview never opens them. Existing centering/camera-preservation, blank note, cache reuse, saved-edit invalidation and vault-isolation checks also passed.
+- Scenes taller than three times their width with a non-image PDF fit the first PDF page in scene order. Only that page and intersecting non-PDF annotations render, clipped to its bounds. Ordinary scenes retain whole-note previews. No document format, saved camera, editor behavior or source files change. Physical-tablet acceptance remains unverified.
+
+Packaged using `scripts/package-release.py --allow-dirty` as a **development snapshot** on `codex/note-previews-0.10.0`, preserving all preexisting work. No commit, tag or push. Artifacts: `dist/dotnote-0.10.1.apk`, `dist/dotnote-0.10.1-source.zip`, `dist/release-0.10.1.json`, `dist/SHA256SUMS-0.10.1`. The package manifest records source state and hashes; packaging verifies the increased version code and previous signing identity.
+
+Evidence: `/private/tmp/dotnote-0.10.1-build.log`, `/private/tmp/dotnote-0.10.1-previews.log`, `/private/tmp/dotnote-0.10.1-package.log`. Emulator installation used updates without clearing app data.
+
+---
+
+# 0.10.0 note-preview validation
+
+Validated October 1, 2026 with cached JDK 20 / Android SDK 36 and the disposable Android 16 ARM64 tablet emulator (1280×800, skiagl). App version **0.10.0 / code 17**.
+
+- Debug app/instrumentation assembly, all **38 JVM tests**, and lint passed (**0 errors, 40 warnings**, including one optional KTX suggestion for snapshot bitmap creation). `git diff --check` passed.
+- **9 focused Android tests passed**: NotePreviewTest (3), NativePipelineTest (2), FlingNavigationTest (3), and TextTemplateTest.textRendersAfterTransformAndInPdfExport (1). Pixel checks cover off-origin centering, unchanged saved camera, blank notes and a 40-page deck below the editor minimum zoom. Cache checks cover reuse, saved-edit invalidation, vault isolation and unchanged stored content. Existing native ink/PDF/backup, editor fit/navigation and text export checks passed.
+- Visually inspected the actual library grid: centered ink, shapes, text and imported-image content appear in the cards, with quiet empty cards for blank notes. Screenshot: `/private/tmp/dotnote-0.10.0-grid.png`. Physical-tablet performance remains unverified.
+- Initial Android test compilation used the wrong PDF close helper; corrected to the existing `useDocument`. The initial cache fixture incorrectly changed content without changing its revision; corrected to use `dao.save` with a new modification time. Final test builds and runs passed. No application data was cleared.
+
+Source branch: `codex/note-previews-0.10.0`. Preexisting 0.9.2 storage work, TODO edits and `.perf-transfer.bundle` are preserved. Package with `scripts/package-release.py --allow-dirty` as an explicit **development snapshot**, not a clean tagged release. The manifest records the base commit, dirty paths, source/APK hashes and signing certificate. No commit, tag or push is claimed. Artifacts: `dist/dotnote-0.10.0.apk`, `dist/dotnote-0.10.0-source.zip`, `dist/release-0.10.0.json` and `dist/SHA256SUMS-0.10.0`. The package script verifies increasing metadata and signing compatibility with the previous APK.
+
+Evidence: `/private/tmp/dotnote-0.10.0-build.log`, `dotnote-0.10.0-test-build.log`, `dotnote-0.10.0-preview-native.log`, `dotnote-0.10.0-fit.log`, `dotnote-0.10.0-text.log`, and `dotnote-0.10.0-package.log` in the same directory. Earlier failed fixture evidence is in `dotnote-0.10.0-previews.log`.
+
+---
+
+# 0.9.2 large-note storage validation
+
+Validated October 1, 2026 with the cached JDK 20 / Android SDK 36 toolchain and the existing disposable Android 16 / API 36 ARM64 tablet emulator (1280×800, skiagl). App version **0.9.2 / code 16**.
+
+- Debug app and instrumentation APK assembly, compilation, all **38 JVM tests**, and lint passed. Lint: **0 errors, 39 warnings**. `git diff --check` passed. Room schema 2 and its identity hash are unchanged; no migration or app-data clearing was required.
+- **28 focused Android tests passed**: LargeNoteStorageTest (2), VaultPipelineTest (4), VaultLifecycleTest (3), NativePipelineTest (2), StartupLoadingTest (2), GesturePipelineTest (2), EditorUpdateTest (3), WidgetPipelineTest (4), and TextTemplateTest (6, isolated method invocations).
+- A valid Unicode document over **4 MiB** reproduces `SQLiteBlobTooBigException` using the old full-row SELECT. The same existing note passes chunked single/all-note reads, save/no-op timestamp retention, note/folder rename and move, snapshot, ZIP backup/merge restore, file-authoritative reopening and delete-to-trash. A second preexisting small note survives unchanged. Boundary tests retain supplementary Unicode at the 65,536-code-point boundary and handle empty/exact-length documents and missing IDs.
+- Save/read operations reconstruct content from bounded SQLite substrings in one Room transaction, so metadata and chunks share a consistent database snapshot. The fix also applies to legacy migration and backup reads. Native ink, selection/undo, rendering/PDF export, templates, widgets, migration, vault switching and journal/Git snapshot regressions passed. Documents still require memory proportional to their content; this does not remove the existing 64 MiB vault-file read limit or certify arbitrary large-note performance.
+- The initial combined TextTemplateTest run hit a dialog accessibility failure and the documented emulator `libhwui.so` RenderThread crash. Isolated method runs passed. A retained fixture with the same template title made the backup test ambiguous; that test now uses a temporary isolated vault, restores the prior selection and deletes only its own fixture. Its final run passed. These initial failures are retained in the evidence logs; no all-in-one connected-suite pass is claimed.
+
+Release source: focused branch `codex/large-note-cursorwindow-0.9.2`. Existing `TODO.md` edits and `.perf-transfer.bundle` remain untouched. Packaging uses `scripts/package-release.py --allow-dirty`: an explicit **development snapshot**, with the base commit, dirty paths and exact source/APK hashes in `dist/release-0.9.2.json`. No tag or push is claimed. Artifacts: `dist/dotnote-0.9.2.apk`, `dist/dotnote-0.9.2-source.zip`, `dist/SHA256SUMS-0.9.2` and the manifest. The packaging script verifies APK metadata and certificate compatibility against 0.9.1: SHA-256 `825739c9e1b77f0276094938143f07b6a51e636344c076fa90f6caad869d9744`.
+
+Evidence: `/private/tmp/dotnote-0.9.2-build.log`, `/private/tmp/dotnote-0.9.2-test-fixture-final-build.log`, `/private/tmp/dotnote-0.9.2-storage-tests.log`, class-named `/private/tmp/dotnote-0.9.2-*.log` results, isolated `/private/tmp/dotnote-0.9.2-text-*.log` results (including `text-template-backup-final`), and `/private/tmp/dotnote-0.9.2-package.log`.
+
+Physical-tablet acceptance remains unverified. Install as an update without uninstalling or clearing data, then reopen the affected note and make a small edit to confirm saving.
+
+---
+
 # 0.9.1 text reflow and local startup validation
 
 Validated October 1, 2026 with the cached JDK 20 / Android SDK 36 toolchain and the existing disposable Android 16 / API 36 ARM64 tablet emulator (1280×800, skiagl). App version **0.9.1 / code 15**.
