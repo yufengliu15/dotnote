@@ -85,6 +85,7 @@ Do not silently “fix” these as part of an unrelated request. Use them to cho
 | Symptom | First checks |
 | --- | --- |
 | Save remains Unsaved | Snackbar error, storage availability, queued save destination/sequence, `FileLibraryDao` failure, journal existence; preserve vault before repair |
+| Save/open says Row too big to fit into CursorWindow | Update to 0.9.2 or later; document reads use bounded chunks. Preserve existing files/data; increasing disk space does not remove the cursor row limit |
 | Note appears in files but not library | Store readiness/index rebuild and active vault/folder/search filters; avoid inserting only into Room |
 | Duplicate or missing content after a move | Journal replay, full IDs in generated paths, parent graph and canonical containment; inspect a copied vault |
 | PDF says Page unavailable | Referenced file existence, page index, actual renderer error, failed-key cache tied to current view |

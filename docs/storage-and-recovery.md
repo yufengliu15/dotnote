@@ -8,6 +8,8 @@ The vault directory is the source of truth. [`Store`](../app/src/main/java/dev/d
 
 Room schema 2 (with non-destructive 1→2 migration) contains `folders(id PRIMARY KEY, parentId?, name)` and `notes(id PRIMARY KEY, folderId?, title, modified, document, isTemplate DEFAULT 0)`, with an index on `notes.folderId`. There are no SQL foreign-key constraints; application validation protects folder relationships. Folder flow sorts names case-insensitively. Note-summary flow selects metadata only and sorts by modification time descending. Opening a note loads the document string separately.
 
+`RoomLibraryDao.note()` and `allNotes()` read small metadata projections, then reconstruct document JSON with 65,536-code-point SQLite `substr` queries inside `@Transaction`. No cursor row contains an entire large document. SQLite `length` and `substr` share code-point offsets, preserving supplementary Unicode characters at chunk boundaries. This also covers the old database during migration, backups and file mutations that re-read notes. The schema and portable file format remain unchanged; a complete opened document still occupies memory proportional to its content.
+
 ```mermaid
 sequenceDiagram
     participant UI as AppState

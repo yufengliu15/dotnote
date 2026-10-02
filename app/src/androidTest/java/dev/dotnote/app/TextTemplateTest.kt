@@ -429,8 +429,23 @@ class TextTemplateTest {
         }
     }
 
+    private fun inIsolatedVault(block: () -> Unit) {
+        val catalog = VaultCatalog(context)
+        val previous = catalog.selected()
+        val fixture = catalog.create("Isolated template backup test")
+        catalog.select(fixture.localId)
+        try {
+            block()
+        } finally {
+            catalog.select(previous)
+            BackupScheduler.cancel(context, fixture.localId)
+            context.deleteDatabase("vault-${fixture.localId}.db")
+            catalog.root(fixture.localId).deleteRecursively()
+        }
+    }
+
     @Test
-    fun templateCopiesStayIndependentAndSurviveFileRebuildAndBackup() {
+    fun templateCopiesStayIndependentAndSurviveFileRebuildAndBackup() = inIsolatedVault {
         ActivityScenario.launch(MainActivity::class.java).use { scenario ->
             lateinit var state: AppState
             scenario.onActivity { state = ViewModelProvider(it)[AppState::class.java] }

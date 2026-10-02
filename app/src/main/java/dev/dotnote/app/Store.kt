@@ -41,58 +41,138 @@ data class NoteSummary(
     val isTemplate: Boolean = false,
 )
 
-@Dao
 interface LibraryDao {
-    @Query("SELECT * FROM folders ORDER BY name COLLATE NOCASE") fun folders(): Flow<List<Folder>>
+    fun folders(): Flow<List<Folder>>
+
+    fun notes(): Flow<List<NoteSummary>>
+
+    suspend fun templates(): List<NoteSummary>
+
+    suspend fun allFolders(): List<Folder>
+
+    suspend fun allNotes(): List<Note>
+
+    suspend fun note(id: String): Note?
+
+    suspend fun clearNotes()
+
+    suspend fun clearFolders()
+
+    suspend fun put(note: Note)
+
+    suspend fun put(folder: Folder)
+
+    suspend fun putNotes(notes: List<Note>)
+
+    suspend fun putFolders(folders: List<Folder>)
+
+    suspend fun deleteNote(id: String)
+
+    suspend fun deleteFolder(id: String)
+
+    suspend fun childFolders(id: String): Int
+
+    suspend fun childNotes(id: String): Int
+
+    suspend fun renameNote(id: String, title: String)
+
+    suspend fun moveNote(id: String, folder: String?)
+
+    suspend fun save(id: String, document: String, modified: Long)
+}
+
+/** Metadata stays small even when the document exceeds Android's CursorWindow capacity. */
+data class NoteRecord(@Embedded val summary: NoteSummary, val documentLength: Int)
+
+@Dao
+abstract class RoomLibraryDao : LibraryDao {
+    @Query("SELECT * FROM folders ORDER BY name COLLATE NOCASE")
+    abstract override fun folders(): Flow<List<Folder>>
 
     @Query("SELECT id, folderId, title, modified, isTemplate FROM notes ORDER BY modified DESC")
-    fun notes(): Flow<List<NoteSummary>>
+    abstract override fun notes(): Flow<List<NoteSummary>>
 
     @Query(
         "SELECT id, folderId, title, modified, isTemplate FROM notes WHERE isTemplate = 1 ORDER BY title COLLATE NOCASE"
     )
-    suspend fun templates(): List<NoteSummary>
+    abstract override suspend fun templates(): List<NoteSummary>
 
-    @Query("SELECT * FROM folders") suspend fun allFolders(): List<Folder>
+    @Query("SELECT * FROM folders") abstract override suspend fun allFolders(): List<Folder>
 
-    @Query("SELECT * FROM notes") suspend fun allNotes(): List<Note>
+    @Query(
+        "SELECT id, folderId, title, modified, isTemplate, length(document) AS documentLength FROM notes"
+    )
+    protected abstract suspend fun noteRecords(): List<NoteRecord>
 
-    @Query("SELECT * FROM notes WHERE id=:id") suspend fun note(id: String): Note?
+    @Query(
+        "SELECT id, folderId, title, modified, isTemplate, length(document) AS documentLength FROM notes WHERE id=:id"
+    )
+    protected abstract suspend fun noteRecord(id: String): NoteRecord?
 
-    @Query("DELETE FROM notes") suspend fun clearNotes()
+    @Query("SELECT substr(document, :offset, :count) FROM notes WHERE id=:id")
+    protected abstract suspend fun documentChunk(id: String, offset: Int, count: Int): String
 
-    @Query("DELETE FROM folders") suspend fun clearFolders()
+    @Transaction override suspend fun allNotes(): List<Note> = noteRecords().map { readNote(it) }
 
-    @Upsert suspend fun put(note: Note)
+    @Transaction override suspend fun note(id: String): Note? = noteRecord(id)?.let { readNote(it) }
 
-    @Upsert suspend fun put(folder: Folder)
+    private suspend fun readNote(record: NoteRecord): Note {
+        // SQLite length/substr both count Unicode code points. Never advance by Kotlin's
+        // UTF-16 String.length, which would skip content after supplementary characters.
+        val document = StringBuilder(record.documentLength)
+        var offset = 1
+        val chunkSize = 64 * 1024
+        while (offset <= record.documentLength) {
+            document.append(documentChunk(record.summary.id, offset, chunkSize))
+            offset += chunkSize
+        }
+        val summary = record.summary
+        return Note(
+            summary.id,
+            summary.folderId,
+            summary.title,
+            summary.modified,
+            document.toString(),
+            summary.isTemplate,
+        )
+    }
 
-    @Upsert suspend fun putNotes(notes: List<Note>)
+    @Query("DELETE FROM notes") abstract override suspend fun clearNotes()
 
-    @Upsert suspend fun putFolders(folders: List<Folder>)
+    @Query("DELETE FROM folders") abstract override suspend fun clearFolders()
 
-    @Query("DELETE FROM notes WHERE id=:id") suspend fun deleteNote(id: String)
+    @Upsert abstract override suspend fun put(note: Note)
 
-    @Query("DELETE FROM folders WHERE id=:id") suspend fun deleteFolder(id: String)
+    @Upsert abstract override suspend fun put(folder: Folder)
+
+    @Upsert abstract override suspend fun putNotes(notes: List<Note>)
+
+    @Upsert abstract override suspend fun putFolders(folders: List<Folder>)
+
+    @Query("DELETE FROM notes WHERE id=:id") abstract override suspend fun deleteNote(id: String)
+
+    @Query("DELETE FROM folders WHERE id=:id")
+    abstract override suspend fun deleteFolder(id: String)
 
     @Query("SELECT COUNT(*) FROM folders WHERE parentId=:id")
-    suspend fun childFolders(id: String): Int
+    abstract override suspend fun childFolders(id: String): Int
 
-    @Query("SELECT COUNT(*) FROM notes WHERE folderId=:id") suspend fun childNotes(id: String): Int
+    @Query("SELECT COUNT(*) FROM notes WHERE folderId=:id")
+    abstract override suspend fun childNotes(id: String): Int
 
     @Query("UPDATE notes SET title=:title WHERE id=:id")
-    suspend fun renameNote(id: String, title: String)
+    abstract override suspend fun renameNote(id: String, title: String)
 
     @Query("UPDATE notes SET folderId=:folder WHERE id=:id")
-    suspend fun moveNote(id: String, folder: String?)
+    abstract override suspend fun moveNote(id: String, folder: String?)
 
     @Query("UPDATE notes SET document=:document, modified=:modified WHERE id=:id")
-    suspend fun save(id: String, document: String, modified: Long)
+    abstract override suspend fun save(id: String, document: String, modified: Long)
 }
 
 @Database(entities = [Folder::class, Note::class], version = 2, exportSchema = true)
 abstract class LibraryDatabase : RoomDatabase() {
-    abstract fun dao(): LibraryDao
+    abstract fun dao(): RoomLibraryDao
 
     companion object {
         val MIGRATION_1_2 =
