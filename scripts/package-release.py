@@ -28,6 +28,16 @@ def sha(path):
     return digest.hexdigest()
 
 
+def certificate_digest(report):
+    digests = set(re.findall(
+        r"^Signer (?:#\d+|\([^()\r\n]+\)) certificate SHA-256 digest: ([0-9a-fA-F]{64})[ \t]*$",
+        report, re.M,
+    ))
+    if len(digests) != 1:
+        raise ValueError("Expected exactly one signing identity in apksigner output:\n" + report)
+    return digests.pop().lower()
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--allow-dirty", action="store_true")
@@ -43,10 +53,9 @@ def main():
     code = int(re.search(r'versionCode\s*=\s*(\d+)', config)[1])
     apk = (args.apk or ROOT / "app/build/outputs/apk/debug/app-debug.apk").resolve()
     sdk = Path(os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or "")
-    builds = [p for p in (sdk / "build-tools").glob("*") if (p / "aapt").is_file()]
-    if not builds:
-        raise SystemExit("Set ANDROID_HOME to the SDK containing aapt and apksigner.")
-    build_tools = max(builds, key=lambda p: tuple(int(n) for n in re.findall(r"\d+", p.name)))
+    build_tools = sdk / "build-tools" / "36.0.0"
+    if not all((build_tools / tool).is_file() for tool in ("aapt", "apksigner")):
+        raise SystemExit("Set ANDROID_HOME and install Android SDK build-tools;36.0.0.")
     metadata = run(str(build_tools / "aapt"), "dump", "badging", str(apk))
     package = re.search(r"package: name='([^']+)' versionCode='([^']+)' versionName='([^']+)'", metadata)
     if not package or package.groups() != ("dev.dotnote.app", str(code), version):
@@ -68,7 +77,7 @@ def main():
 
     def certificate(path):
         report = run(str(build_tools / "apksigner"), "verify", "--print-certs", str(path))
-        return re.search(r"Signer #1 certificate SHA-256 digest: (\w+)", report)[1]
+        return certificate_digest(report)
 
     cert = certificate(apk)
     policy = json.loads((ROOT / "scripts/release-policy.json").read_text())
