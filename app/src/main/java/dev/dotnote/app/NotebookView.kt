@@ -554,7 +554,14 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
         val z = doc.camera.zoom
         var spacing = 24f
         while (spacing * z < 12) spacing *= 2
-        val cached = doc.dots && drawPaper(canvas, spacing * z * density)
+        val period = spacing * z * density
+        // GPU canvases repeat a one-period tile, which costs nothing to keep current while
+        // zooming. Software canvases (tests, previews) blit one cached full-view image instead,
+        // since per-pixel shading is their expensive part.
+        val cached =
+            doc.dots &&
+                (if (canvas.isHardwareAccelerated) drawPaperTile(canvas, period)
+                else drawPaper(canvas, period))
         if (!cached) canvas.drawColor(PAPER)
         canvas.save()
         canvas.concat(matrix)
