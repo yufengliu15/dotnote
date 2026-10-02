@@ -4,7 +4,7 @@ An offline, native Kotlin notebook for Android tablets. Built with Jetpack Compo
 
 ## 0.11.0 in-app updates
 
-Check for updates, download a verified APK, and open Android’s installer from **Version & updates**. No extra updater app or account is required. Release automation builds and verifies updates on GitHub; publishing is an explicit checkbox on the release workflow.
+Check for updates, download a verified APK, and open Android’s installer from **Version & updates**. No extra updater app or account is required. Release automation builds and verifies updates on GitHub; a successful release workflow run automatically creates a GitHub Release and uploads the APK.
 
 ## 0.10.1 note previews
 
@@ -14,7 +14,7 @@ The notes grid shows small, centered snapshots of saved content. Visible cards l
 
 Fixed “Row too big to fit into CursorWindow” when saving or reopening a large note. Document reads now use small chunks, including folder operations, backups and legacy migration. Existing files and the database schema are retained; install as an update without clearing app data.
 
-Current app version: **0.11.1 / code 20**. See [VALIDATION.md](VALIDATION.md) for test results.
+Current app version: **0.11.2 / code 21**. See [VALIDATION.md](VALIDATION.md) for test results.
 
 ## 0.9.1 text resizing and local startup
 
@@ -74,7 +74,7 @@ Start with [docs/README.md](docs/README.md) for the implementation guide: archit
 
 ## Install
 
-Install `dist/dotnote-0.11.1.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. The 0.11.1 build is non-debuggable and retains the existing signing certificate for update compatibility. It is not a Play Store build. Install it over the current app; do not uninstall or clear data.
+Install `dist/dotnote-0.11.2.apk` on your tablet. Android may ask you to allow installs from the app you opened it with. The 0.11.2 build is non-debuggable and retains the existing signing certificate for update compatibility. It is not a Play Store build. Install it over the current app; do not uninstall or clear data.
 
 From 0.11.0 onward, use **Version & updates → Check for updates** to download verified updates directly inside Dotnote. Stable releases are checked by default; preview releases are optional. Android still confirms installation and may show Play Protect prompts. First installs use the [GitHub releases page](https://github.com/yufengliu15/dotnote/releases). See [app updates and release automation](docs/app-updates.md).
 

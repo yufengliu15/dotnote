@@ -1,3 +1,13 @@
+# 0.11.2 automatic APK publication validation
+
+App version **0.11.2 / code 21**, October 1, 2026. Workflow dispatch now defaults to publishing a versioned GitHub Release with the verified APK, source archive, checksums and updater manifest. Existing app/update behavior is unchanged.
+
+- Local Python release tests and YAML syntax checks pass. A fresh hosted run must pass compilation, 44 JVM tests, lint, 11 isolated emulator tests, signing verification and clean-source packaging before publishing this version.
+- The preceding 0.11.1 validation-only run passed all hosted checks and clean signing/package verification: [run 36957994353](https://github.com/yufengliu15/dotnote/actions/runs/36957994353), commit `3c0ba431007328e6cfaad010b7289a277aa8579d`. It did not create a public release.
+- The new publishing run's logs and versioned release manifest provide the exact tested source commit and artifact hashes. No pass/publication is claimed here before that run completes. Historical snapshot records remain unchanged.
+
+---
+
 # 0.11.1 release automation validation
 
 App version **0.11.1 / code 20**, October 1, 2026. This change advances the delivered 0.11.0 snapshot without altering updater or notebook behavior. The setup uses separate clean commits for earlier storage/preview work and the updater; unrelated TODO edits and transfer artifacts are excluded.

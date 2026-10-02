@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.11.2 — 2026-10-01
+
+- Release workflow runs now publish the signed APK and create the GitHub Release by default after validation passes. Validation-only runs remain an explicit opt-out. Android versionCode: 21.
+
 ## 0.11.1 — 2026-10-01
 
 - Activate the GitHub release pipeline with a validation-only default, explicit publishing option, protected signing secrets and downloadable validation artifacts. Preserve earlier snapshot version records and use a clean committed source tree. Android versionCode: 20.
