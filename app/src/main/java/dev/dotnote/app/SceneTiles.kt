@@ -38,6 +38,15 @@ internal class SceneTiles(
         private const val BUDGET_BYTES = 96L * 1024 * 1024
         private const val MOTION_MS = 140L
         private const val LOG_LIMIT = 96
+        /** Marker opacity. Marker tiles store fills already faded to it. */
+        const val MARKER_ALPHA = 85
+
+        /** Fades opaque marker fills within the current clip, like a translucent layer would. */
+        fun fade(canvas: Canvas) =
+            canvas.drawColor(
+                android.graphics.Color.argb(MARKER_ALPHA, 0, 0, 0),
+                android.graphics.PorterDuff.Mode.DST_IN,
+            )
     }
 
     private class Level(val scale: Float) {
@@ -91,6 +100,9 @@ internal class SceneTiles(
 
     private var level: Level? = null
     private var previous: Level? = null
+    // Whole-note, low-resolution level: covers areas revealed while zooming out.
+    private var overview: Level? = null
+    private var overviewBounds: Bounds? = null
     private var lastScale = 0f
     private var scaleChangedAt = 0L
     private var settleQueued = false
@@ -157,9 +169,10 @@ internal class SceneTiles(
                 record(Change(++version, appended, null))
                 dropPrevious()
                 val started = System.nanoTime()
-                level?.tiles?.values?.forEach { tile ->
-                    if (tile.ready) applyAppend(tile, appended)
+                listOfNotNull(level, overview).forEach { l ->
+                    l.tiles.values.forEach { tile -> if (tile.ready) applyAppend(tile, appended) }
                 }
+                updateOverview()
                 if (BuildConfig.DEBUG)
                     android.util.Log.i("DotnoteTiles", "append ${(System.nanoTime() - started) / 1e6} ms")
                 return
@@ -171,7 +184,10 @@ internal class SceneTiles(
                 dirty.add(old[i].bounds)
                 dirty.add(desired[i].bounds)
             }
+        } else if (desired.size < old.size && removedOnly(old, desired, dirty)) {
+            // Erase/delete: dirty holds the removed items.
         } else {
+            dirty.clear()
             val before = IdentityHashMap<Item, Unit>(old.size * 2)
             old.forEach { before[it] = Unit }
             val after = IdentityHashMap<Item, Unit>(desired.size * 2)
@@ -192,11 +208,57 @@ internal class SceneTiles(
         }
         record(Change(++version, null, dirty))
         dropPrevious()
-        level?.tiles?.values?.forEach { tile ->
-            if (!tile.ready) return@forEach
-            val touched = dirty.filter { it.outset(tile.pad).intersects(tile.world) }
-            if (touched.isNotEmpty() && !repaint(tile, touched)) invalidate(tile)
+        listOfNotNull(level, overview).forEach { l ->
+            l.tiles.values.forEach { tile ->
+                if (!tile.ready) return@forEach
+                val touched = dirty.filter { it.outset(tile.pad).intersects(tile.world) }
+                if (touched.isNotEmpty() && !repaint(tile, touched)) invalidate(tile)
+            }
         }
+        updateOverview()
+    }
+
+    /** Sizes the overview to the note: at most 2048 px on its longer side. */
+    private fun updateOverview() {
+        var box: Bounds? = null
+        for (item in items) if (item.kind != "PDF") box = box?.union(item.bounds) ?: item.bounds
+        val b = box
+        if (b == null || !b.width.isFinite() || !b.height.isFinite()) {
+            overview?.tiles?.values?.forEach(::invalidate)
+            overview = null
+            overviewBounds = null
+            return
+        }
+        val known = overviewBounds
+        if (
+            overview != null &&
+                known != null &&
+                b.left >= known.left &&
+                b.top >= known.top &&
+                b.right <= known.right &&
+                b.bottom <= known.bottom
+        )
+            return
+        // Leave room to grow so ordinary writing does not resize it.
+        val grown = b.outset(maxOf(b.width, b.height, 256f) * .25f)
+        val scale = 2048f / maxOf(grown.width, grown.height, 1f)
+        overview?.tiles?.values?.forEach(::invalidate)
+        if (scale < 1e-4f) {
+            overview = null
+            overviewBounds = null
+            return
+        }
+        overview = Level(scale)
+        overviewBounds = grown
+    }
+
+    /** True when [new] is [old] with some items removed; collects their bounds. */
+    private fun removedOnly(old: List<Item>, new: List<Item>, dirty: MutableList<Bounds>): Boolean {
+        var j = 0
+        for (i in old.indices) {
+            if (j < new.size && old[i] === new[j]) j++ else dirty.add(old[i].bounds)
+        }
+        return j == new.size
     }
 
     private val uiIndex = SceneIndex()
@@ -259,8 +321,10 @@ internal class SceneTiles(
         if (list.isEmpty()) return
         canvas.translate(-tile.x * SIZE.toFloat(), -tile.y * SIZE.toFloat())
         canvas.scale(tile.level.scale, tile.level.scale)
-        if (markers) uiRenderer.drawMarkerFills(canvas, list, colorOrder)
-        else {
+        if (markers) {
+            uiRenderer.drawMarkerFills(canvas, list, colorOrder)
+            fade(canvas)
+        } else {
             val matrix = Matrix(canvas.matrix)
             list.forEach { uiRenderer.draw(canvas, it, matrix) }
         }
@@ -289,8 +353,11 @@ internal class SceneTiles(
         version++
         resetVersion = version
         log.clear()
-        listOfNotNull(level, previous).forEach { l -> l.tiles.values.forEach(::invalidate) }
+        listOfNotNull(level, previous, overview).forEach { l -> l.tiles.values.forEach(::invalidate) }
         previous = null
+        overview = null
+        overviewBounds = null
+        updateOverview()
     }
 
     private fun dropPrevious() {
@@ -347,14 +414,8 @@ internal class SceneTiles(
             val (canvas, matrix) = tileCanvas(tile, bitmap)
             ink.forEach { uiRenderer.draw(canvas, it, matrix) }
         }
-        if (marker.isNotEmpty()) {
-            val bitmap = tile.marker ?: obtain().also {
-                tile.marker = it
-                bytes += it.allocationByteCount
-            }
-            val (canvas, _) = tileCanvas(tile, bitmap)
-            uiRenderer.drawMarkerFills(canvas, marker, colorOrder)
-        }
+        // Faded marker pixels cannot simply be drawn over: repaint the region instead.
+        if (marker.isNotEmpty() && !repaint(tile, marker.map { it.bounds })) invalidate(tile)
     }
 
     private fun isInk(item: Item) = item.kind != "PDF" && item.kind != "HIGHLIGHTER"
@@ -448,6 +509,17 @@ internal class SceneTiles(
             t.used = frame
             if (!t.ready && !t.inFlight && t.failedAt != version) wanted.add(t)
         }
+        overview?.let { o ->
+            val b = overviewBounds ?: return@let
+            val x0 = floor(b.left * o.scale / SIZE).toInt()
+            val y0 = floor(b.top * o.scale / SIZE).toInt()
+            val x1 = floor(b.right * o.scale / SIZE).toInt()
+            val y1 = floor(b.bottom * o.scale / SIZE).toInt()
+            for (y in y0..y1) for (x in x0..x1) {
+                val t = tile(o, x, y)
+                if (!t.ready && !t.inFlight && t.failedAt != version) wanted.add(t)
+            }
+        }
         pump()
     }
 
@@ -455,7 +527,8 @@ internal class SceneTiles(
         if (disposed) return
         while (inFlight < 1 && wanted.isNotEmpty()) {
             val t = wanted.removeAt(0)
-            if (t.ready || t.inFlight || t.level !== level || t.failedAt == version) continue
+            if (t.ready || t.inFlight || (t.level !== level && t.level !== overview)) continue
+            if (t.failedAt == version) continue
             submit(t)
         }
     }
@@ -495,6 +568,7 @@ internal class SceneTiles(
                     marker = bitmap()
                     val (canvas, _) = tileCanvas(t, marker!!)
                     workerRenderer.drawMarkerFills(canvas, markerItems, order)
+                    fade(canvas)
                     marker!!.prepareToDraw()
                 }
             } catch (e: Throwable) {
@@ -528,7 +602,11 @@ internal class SceneTiles(
             ink?.let { pool.add(it) }
             marker?.let { pool.add(it) }
         }
-        if (disposed || (t.level !== level && t.level !== previous) || jobVersion < resetVersion) {
+        if (
+            disposed ||
+                (t.level !== level && t.level !== previous && t.level !== overview) ||
+                jobVersion < resetVersion
+        ) {
             discard()
             pump()
             return
@@ -543,7 +621,7 @@ internal class SceneTiles(
                 }
         ) {
             discard()
-            if (t.level === level) wanted.add(0, t)
+            if (t.level === level || t.level === overview) wanted.add(0, t)
             pump()
             return
         }
@@ -593,6 +671,31 @@ internal class SceneTiles(
     ) {
         val f = frame(camera, density, width, height)
         if (!markers) schedule(f)
+        // Inside the caller's translucent layer, marker tiles are restored to opaque fills.
+        tilePaint = if (markers) unfade else null
+        try {
+            drawLayer(canvas, f, markers, fallback)
+        } finally {
+            tilePaint = null
+        }
+    }
+
+    private val unfade =
+        Paint(Paint.FILTER_BITMAP_FLAG).apply {
+            colorFilter =
+                android.graphics.ColorMatrixColorFilter(
+                    android.graphics.ColorMatrix().apply {
+                        setScale(1f, 1f, 1f, 255f / MARKER_ALPHA)
+                    }
+                )
+        }
+
+    private fun drawLayer(
+        canvas: Canvas,
+        f: Frame,
+        markers: Boolean,
+        fallback: (canvas: Canvas, area: Bounds, complete: Boolean) -> Unit,
+    ) {
         var missing: ArrayList<Tile>? = null
         for (y in f.y0..f.y1) for (x in f.x0..f.x1) {
             val t = tile(f.level, x, y)
@@ -680,12 +783,11 @@ internal class SceneTiles(
     }
 
     private var tilePaint: Paint? = null
-    private val translucent = Paint(Paint.FILTER_BITMAP_FLAG)
 
     /**
-     * Draws marker tiles directly at [alpha] when every visible tile (or its previous-level
-     * cover) is finished. Tiles never overlap, so this equals compositing them in one
-     * translucent layer without allocating that full-screen layer. Returns false, drawing
+     * Draws the (already faded) marker tiles directly when every visible tile, or its
+     * previous-level cover, is finished. Tiles never overlap, so this equals compositing opaque
+     * fills in one translucent layer without allocating that layer. Returns false, drawing
      * nothing, when a gap needs the layered vector fallback.
      */
     fun drawTranslucent(
@@ -694,15 +796,13 @@ internal class SceneTiles(
         density: Float,
         width: Int,
         height: Int,
-        alpha: Int,
     ): Boolean {
         val f = frame(camera, density, width, height)
         for (y in f.y0..f.y1) for (x in f.x0..f.x1) {
             val t = tile(f.level, x, y)
             if (!t.ready && !drawPrevious(null, f, t, true)) return false
         }
-        translucent.alpha = alpha
-        tilePaint = translucent
+        tilePaint = null
         try {
             for (y in f.y0..f.y1) for (x in f.x0..f.x1) {
                 val t = tile(f.level, x, y)
@@ -723,8 +823,11 @@ internal class SceneTiles(
     }
 
     /** Covers a missing tile with finished tiles from the previous zoom level, if complete. */
-    private fun drawPrevious(canvas: Canvas?, f: Frame, t: Tile, markers: Boolean): Boolean {
-        val p = previous ?: return false
+    private fun drawPrevious(canvas: Canvas?, f: Frame, t: Tile, markers: Boolean): Boolean =
+        cover(canvas, f, t, markers, previous) || cover(canvas, f, t, markers, overview)
+
+    private fun cover(canvas: Canvas?, f: Frame, t: Tile, markers: Boolean, p: Level?): Boolean {
+        p ?: return false
         if (p === f.level) return false
         val x0 = floor(t.world.left * p.scale / SIZE).toInt()
         val y0 = floor(t.world.top * p.scale / SIZE).toInt()
@@ -766,7 +869,7 @@ internal class SceneTiles(
     fun release() {
         disposed = true
         worker.shutdown()
-        listOfNotNull(level, previous).forEach { it.tiles.clear() }
+        listOfNotNull(level, previous, overview).forEach { it.tiles.clear() }
         level = null
         previous = null
         pool.clear()

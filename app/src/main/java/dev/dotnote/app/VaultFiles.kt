@@ -438,6 +438,21 @@ class VaultFiles(val root: File, private val cacheFile: File? = null) {
 
     internal fun documentText(file: File): String {
         val text = AtomicFile(file).openRead().use { it.readBytes().toString(Charsets.UTF_8) }
+        // Files written by Dotnote (and earlier org.json versions) keep a fixed key order:
+        // ...,"document":{...},"template":<bool>}. Strings escape quotes, so these markers cannot
+        // appear inside the title; the document is then taken without scanning it. Anything
+        // else uses the full parser. The caller parses and validates the document either way.
+        if (text.startsWith("{\"format\":\"dotnote\",\"version\":1,\"id\":")) {
+            val start = text.indexOf(",\"document\":{")
+            val end = text.lastIndexOf(",\"template\":")
+            if (
+                start > 0 &&
+                    end > start &&
+                    (text.endsWith(",\"template\":false}") || text.endsWith(",\"template\":true}")) &&
+                    text.lastIndexOf(",\"document\":{") == start
+            )
+                return text.substring(start + 12, end)
+        }
         val json = JsonCursor(text)
         json.beginObject()
         var first = true

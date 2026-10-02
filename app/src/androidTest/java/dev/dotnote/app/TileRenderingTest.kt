@@ -174,7 +174,7 @@ class TileRenderingTest {
             // Same choice as the editor: direct translucent tiles when complete, else a layer.
             if (
                 draggedMarkers.isNotEmpty() ||
-                    !tiles.drawTranslucent(canvas, camera, density, width, height, 85)
+                    !tiles.drawTranslucent(canvas, camera, density, width, height)
             ) {
                 val layer = canvas.saveLayerAlpha(null, 85)
                 tiles.draw(canvas, camera, density, width, height, true, fallback(true))

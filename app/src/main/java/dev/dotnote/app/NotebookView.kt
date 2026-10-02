@@ -429,8 +429,11 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
             val c = Canvas(bitmap)
             c.scale(scale, scale)
             c.translate(-box.left, -box.top)
-            if (markers) renderer.drawMarkerFills(c, list, list.map { it.color }.distinct().toIntArray())
-            else {
+            if (markers) {
+                renderer.drawMarkerFills(c, list, list.map { it.color }.distinct().toIntArray())
+                // Pre-faded, so it can be drawn without the marker layer.
+                SceneTiles.fade(c)
+            } else {
                 val m = Matrix(c.matrix)
                 list.forEach { renderer.draw(c, it, m) }
             }
@@ -506,13 +509,12 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
             else state.document.items.filter { it.kind == "HIGHLIGHTER" && it.id in skip }
         if (!tiles.hasMarkers && live == null && dragged.isEmpty()) return
         val camera = state.document.camera
-        // Finished tiles alone can be drawn translucent directly, without a layer.
-        if (
-            live == null &&
-                dragged.isEmpty() &&
-                tiles.drawTranslucent(canvas, camera, density, width, height, 85)
-        )
+        // Finished tiles (and a moved selection's pre-faded sprite) draw without a layer.
+        val spriteReady = dragged.isEmpty() || (moving && dragSprite() != null)
+        if (live == null && spriteReady && tiles.drawTranslucent(canvas, camera, density, width, height)) {
+            if (dragged.isNotEmpty()) drawSprite(canvas, markers = true)
             return
+        }
         // Opaque fills share ONE translucent layer, so overlaps never darken.
         val layer = canvas.saveLayerAlpha(null, 85)
         if (tiles.hasMarkers)
@@ -522,14 +524,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
                 complete ->
                 drawVector(c, area, markers = true, complete = complete)
             }
-        if (dragged.isNotEmpty() && drawSprite(canvas, markers = true)) {
-            live?.let {
-                canvas.save()
-                canvas.concat(screenMatrix())
-                it.draw(canvas, livePaint)
-                canvas.restore()
-            }
-        } else if (dragged.isNotEmpty() || live != null) {
+        if (dragged.isNotEmpty() || live != null) {
             canvas.save()
             canvas.concat(screenMatrix())
             if (dragged.isNotEmpty())

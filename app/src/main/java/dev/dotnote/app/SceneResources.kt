@@ -48,6 +48,56 @@ internal data class VisibleScene(
     val foreground: List<Item>,
 )
 
+/** Open-addressing map from grid-cell key to its item list, without boxing keys. */
+internal class CellMap {
+    private var keys = LongArray(64)
+    private var values = arrayOfNulls<IntList>(64)
+    private var count = 0
+
+    private fun slot(key: Long, table: LongArray, lists: Array<IntList?>): Int {
+        var h = (key * -0x61c8864680b583ebL).ushr(32).toInt() and (table.size - 1)
+        while (lists[h] != null && table[h] != key) h = (h + 1) and (table.size - 1)
+        return h
+    }
+
+    operator fun get(key: Long): IntList? = values[slot(key, keys, values)]
+
+    fun getOrPut(key: Long): IntList {
+        var h = slot(key, keys, values)
+        values[h]?.let {
+            return it
+        }
+        if ((count + 1) * 10 > keys.size * 6) {
+            grow()
+            h = slot(key, keys, values)
+        }
+        keys[h] = key
+        count++
+        return IntList(4).also { values[h] = it }
+    }
+
+    private fun grow() {
+        val oldKeys = keys
+        val oldValues = values
+        keys = LongArray(oldKeys.size * 2)
+        values = arrayOfNulls(oldKeys.size * 2)
+        for (i in oldKeys.indices) oldValues[i]?.let {
+            val h = slot(oldKeys[i], keys, values)
+            keys[h] = oldKeys[i]
+            values[h] = it
+        }
+    }
+
+    fun clear() {
+        values.fill(null)
+        count = 0
+    }
+
+    fun forEachList(action: (IntList) -> Unit) {
+        for (list in values) if (list != null) action(list)
+    }
+}
+
 /** Growable primitive int list; avoids boxing in spatial queries. */
 internal class IntList(capacity: Int = 8) {
     var data = IntArray(capacity)
@@ -76,6 +126,10 @@ internal class IntList(capacity: Int = 8) {
         size = 0
     }
 
+    fun truncate(length: Int) {
+        size = length
+    }
+
     fun sort() = data.sort(0, size)
 }
 
@@ -86,7 +140,7 @@ internal class IntList(capacity: Int = 8) {
  */
 internal class SceneIndex {
     private var source: List<Item>? = null
-    private val cells = HashMap<Long, IntList>()
+    private val cells = CellMap()
     private val oversized = IntList()
     private var lastViewport: Bounds? = null
     private var lastScene = VisibleScene(emptyList(), emptyList(), emptyList())
@@ -111,6 +165,7 @@ internal class SceneIndex {
                 return
             }
         }
+        if (old != null && items.size < old.size && removeMissing(old, items)) return
         if (old != null && items.size == old.size) {
             var changed = 0
             val limit = maxOf(64, items.size / 8)
@@ -129,12 +184,36 @@ internal class SceneIndex {
         items.forEachIndexed(::insert)
     }
 
+    /**
+     * Erasing or deleting keeps the remaining items in order. Renumber the index in place instead
+     * of rebuilding it: one pass over the cell lists, no geometry or hashing per item.
+     */
+    private fun removeMissing(old: List<Item>, items: List<Item>): Boolean {
+        val map = IntArray(old.size)
+        var j = 0
+        for (i in old.indices) {
+            if (j < items.size && old[i] === items[j]) map[i] = j++ else map[i] = -1
+        }
+        if (j != items.size) return false
+        fun remap(list: IntList) {
+            var w = 0
+            for (k in 0 until list.size) {
+                val next = map[list[k]]
+                if (next >= 0) list.data[w++] = next
+            }
+            list.truncate(w)
+        }
+        remap(oversized)
+        cells.forEachList(::remap)
+        return true
+    }
+
     private fun insert(index: Int, item: Item) {
         val range = cellRange(item.bounds, 64)
         if (range == null) oversized.add(index)
         else
             for (x in range[0]..range[2]) for (y in range[1]..range[3]) {
-                cells.getOrPut(key(x, y)) { IntList(4) }.add(index)
+                cells.getOrPut(key(x, y)).add(index)
             }
     }
 
