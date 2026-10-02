@@ -22,6 +22,8 @@ import kotlin.math.*
 // Constructed exclusively by Compose AndroidView with its editor state.
 @android.annotation.SuppressLint("ViewConstructor")
 private const val PAPER = 0xfffafaf6.toInt()
+// Objects a not-yet-rendered tile area may draw directly while its tile is being rendered.
+private const val FALLBACK_LIMIT = 300
 
 class NotebookView(context: Context, val state: AppState) : FrameLayout(context) {
     private val density = resources.displayMetrics.density
@@ -29,7 +31,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
     private var preparedPen = brush(state.color, state.strokeWidth, false)
     private var preparedMarker = brush(state.color, state.strokeWidth * 5, true)
     private var warmedSurface = false
-    private val strokeCache = StrokeCache()
+    private val strokeCache = StrokeCache.shared
     // Draws only what is not in tiles: dragged selections, gaps and live previews.
     private val renderer = ObjectRenderer(vectorHighlights = false, sharedStrokes = strokeCache)
     private val sceneIndex = SceneIndex()
@@ -471,6 +473,10 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
         val skip = excluded()
         val hidden = handoffs.values
         sceneIndex.query(items, area, hits)
+        // The area is already being rendered into tiles. Drawing hundreds of strokes directly
+        // would stall this frame for longer than the tiles take to arrive (for example the first
+        // frames of a dense note just opened), so such areas wait for their tiles.
+        if (!complete && hits.size > FALLBACK_LIMIT) return
         val matrix = screenMatrix()
         canvas.save()
         canvas.concat(matrix)
@@ -655,7 +661,7 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
             bitmap.height < height + period + 2) {
             if (now - periodChangedAt < 150) {
                 postInvalidateDelayed(160)
-                return false
+                return drawPaperTile(canvas, period)
             }
             val w = width + ceil(period).toInt() + 2
             val h = height + ceil(period).toInt() + 2
@@ -685,6 +691,45 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
             return (m - period).roundToInt()
         }
         canvas.drawBitmap(bitmap, phase(c.x * density).toFloat(), phase(c.y * density).toFloat(), null)
+        return true
+    }
+
+    private var dotTile: Bitmap? = null
+    private var dotTileSize = 0
+    private val dotPaint = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val dotMatrix = Matrix()
+
+    /**
+     * While the dot period is changing (a pinch), fills the view with a repeating one-period tile
+     * instead of rasterizing every dot of the view each frame.
+     */
+    private fun drawPaperTile(canvas: Canvas, period: Float): Boolean {
+        val size = period.roundToInt()
+        if (size < 4 || size > 1024) return false
+        var tile = dotTile
+        if (tile == null || dotTileSize != size) {
+            tile?.recycle()
+            tile = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+            val c = Canvas(tile)
+            c.drawColor(PAPER)
+            paint.color = 0xffcdd3ca.toInt()
+            paint.style = Paint.Style.FILL
+            // A dot at the shared corner of four repeated tiles.
+            for (x in 0..1) for (y in 0..1) c.drawCircle(x * size.toFloat(), y * size.toFloat(), density, paint)
+            dotTile = tile
+            dotTileSize = size
+            dotPaint.shader =
+                android.graphics.BitmapShader(
+                    tile,
+                    android.graphics.Shader.TileMode.REPEAT,
+                    android.graphics.Shader.TileMode.REPEAT,
+                )
+        }
+        val c = state.document.camera
+        dotMatrix.setScale(period / size, period / size)
+        dotMatrix.postTranslate(c.x * density, c.y * density)
+        dotPaint.shader.setLocalMatrix(dotMatrix)
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), dotPaint)
         return true
     }
 

@@ -78,6 +78,17 @@ internal fun DotnoteTheme(content: @Composable () -> Unit) {
 class MainActivity : ComponentActivity() {
     private var widgetRequest by mutableStateOf<WidgetAction?>(null)
 
+    @Suppress("DEPRECATION")
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        // Stroke meshes are rebuilt on demand; give them back when the system is short of memory.
+        if (
+            level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND ||
+                level == android.content.ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL
+        )
+            StrokeCache.shared.clear()
+    }
+
     override fun onStart() {
         super.onStart()
         CalendarWidgets.updateAll(this)

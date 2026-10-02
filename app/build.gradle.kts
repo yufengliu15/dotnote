@@ -12,8 +12,8 @@ android {
         applicationId = "dev.dotnote.app"
         minSdk = 29
         targetSdk = 36
-        versionCode = 23
-        versionName = "0.12.1"
+        versionCode = 24
+        versionName = "0.13.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     signingConfigs {

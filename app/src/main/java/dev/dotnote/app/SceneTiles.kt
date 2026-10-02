@@ -31,7 +31,7 @@ internal class SceneTiles(
     private val post: (Runnable) -> Unit,
     private val postDelayed: (Runnable, Long) -> Unit,
     private val changed: () -> Unit,
-    strokes: StrokeCache,
+    private val strokes: StrokeCache,
 ) {
     companion object {
         const val SIZE = 512
@@ -88,6 +88,25 @@ internal class SceneTiles(
                 )
                 .apply { isDaemon = true }
         }
+    // Helpers that tessellate a tile's missing strokes alongside the tile thread. Opening a dense
+    // note is dominated by building stroke meshes, which are independent of each other.
+    private val inkThreads = (Runtime.getRuntime().availableProcessors() - 1).coerceIn(0, 3)
+    private val inkPool: ExecutorService? =
+        if (inkThreads == 0) null
+        else
+            Executors.newFixedThreadPool(inkThreads) { r ->
+                Thread(
+                        {
+                            Process.setThreadPriority(
+                                Process.THREAD_PRIORITY_DEFAULT +
+                                    Process.THREAD_PRIORITY_LESS_FAVORABLE
+                            )
+                            r.run()
+                        },
+                        "Dotnote-Ink",
+                    )
+                    .apply { isDaemon = true }
+            }
     private val uiRenderer = ObjectRenderer(vectorHighlights = false, sharedStrokes = strokes)
     private val workerRenderer = ObjectRenderer(vectorHighlights = false, sharedStrokes = strokes)
     private val workerIndex = SceneIndex()
@@ -107,7 +126,7 @@ internal class SceneTiles(
     private var scaleChangedAt = 0L
     private var settleQueued = false
     private var frame = 0L
-    private var disposed = false
+    @Volatile private var disposed = false
     private var inFlight = 0
 
     // Tile scene: the document without hidden (handing-off) and excluded (dragged) items.
@@ -431,7 +450,9 @@ internal class SceneTiles(
         if (current == null) return Level(scale).also { level = it }
         if (current.scale == scale) return current
         val ratio = scale / current.scale
-        val moving = now - scaleChangedAt < MOTION_MS
+        // A queued settle means this gesture is still treated as moving, so every layer drawn in
+        // one traversal agrees even when a slow layer outlasts MOTION_MS.
+        val moving = settleQueued || now - scaleChangedAt < MOTION_MS
         if (moving && ratio in .5f..2f) {
             if (!settleQueued) {
                 settleQueued = true
@@ -559,6 +580,7 @@ internal class SceneTiles(
                     (unused.removeFirstOrNull()?.also { it.eraseColor(0) }
                         ?: Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888))
                 if (inkItems.isNotEmpty()) {
+                    tessellate(inkItems)
                     ink = bitmap()
                     val (canvas, matrix) = tileCanvas(t, ink!!)
                     inkItems.forEach { workerRenderer.draw(canvas, it, matrix) }
@@ -586,6 +608,43 @@ internal class SceneTiles(
             val inkResult = ink
             val markerResult = marker
             post(Runnable { complete(t, jobVersion, inkResult, markerResult, failed) })
+        }
+    }
+
+    /** Builds missing stroke meshes for one tile on the tile thread plus the ink helpers. */
+    private fun tessellate(items: List<Item>) {
+        val helpers = inkPool ?: return
+        val missing = ArrayList<Item>()
+        for (item in items) {
+            if (item.ink != null && !item.fill && strokes.get(item) == null) missing.add(item)
+        }
+        if (missing.size < 8) return
+        // More meshes than the shared cache holds would evict each other before drawing.
+        val count = minOf(missing.size, strokes.limit / 2)
+        val next = java.util.concurrent.atomic.AtomicInteger()
+        val task = Runnable {
+            while (!disposed) {
+                val i = next.getAndIncrement()
+                if (i >= count) break
+                val item = missing[i]
+                try {
+                    strokes.put(item, inkStroke(item))
+                } catch (_: Throwable) {
+                    // The tile's own draw reports the failure.
+                }
+            }
+        }
+        val futures =
+            try {
+                List(inkThreads) { helpers.submit(task) }
+            } catch (_: java.util.concurrent.RejectedExecutionException) {
+                return
+            }
+        task.run()
+        futures.forEach {
+            try {
+                it.get()
+            } catch (_: Exception) {}
         }
     }
 
@@ -868,6 +927,7 @@ internal class SceneTiles(
     fun release() {
         disposed = true
         worker.shutdown()
+        inkPool?.shutdown()
         listOfNotNull(level, previous, overview).forEach { it.tiles.clear() }
         level = null
         previous = null

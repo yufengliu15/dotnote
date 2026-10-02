@@ -66,7 +66,7 @@ These are visible design gaps or risks inferred from code; they are not all repr
 | Area | Current limitation / implication |
 | --- | --- |
 | Process lifetime | `ON_STOP` queues saves; Android can terminate before completion. “Saved” matters. Unfinished gestures are not crash-recoverable input logs. |
-| Memory/resources | Retained Store/database instances and the open-note queue are unbounded. Tiles use up to 96 MB of bitmaps and the shared stroke cache holds up to 3,000 tessellated strokes; extremely zoomed-out dense notes render slower tiles. The first save after opening a note formats every item once. Very-large-vault and physical-tablet performance are not certified. |
+| Memory/resources | Retained Store/database instances and the open-note queue are unbounded. Tiles use up to 96 MB of bitmaps and the process-wide stroke cache holds up to 3,000 tessellated strokes (also while the library is shown, until memory pressure); `FileLibraryDao` keeps the parsed scenes of the last three opened or saved notes; extremely zoomed-out dense notes render slower tiles. The first save after opening a note formats every item once. Very-large-vault and physical-tablet performance are not certified. |
 | Size enforcement | Import/read boundaries have limits that are not proactively applied to every local editing operation. Large local notes may later exceed scanner limits. |
 | Validation | Document JSON checks do not fully validate native input payloads, shape point counts or PDF page ranges. Some faults surface during rendering. |
 | Atomicity | Journaling makes file operations replayable; file/index/preferences/remote operations are not one global transaction. A reported error can follow a partially successful earlier layer. |

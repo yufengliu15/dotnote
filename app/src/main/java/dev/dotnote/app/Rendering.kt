@@ -35,6 +35,13 @@ fun brush(color: Int, width: Float, highlight: Boolean): Brush =
         .1f,
     )
 
+/** Tessellates a saved pen stroke. Safe to call from any thread. */
+internal fun inkStroke(item: Item): Stroke =
+    Stroke(
+        brush(item.color, item.width, item.kind == "HIGHLIGHTER"),
+        StrokeInputBatch.decode(ByteArrayInputStream(Base64.getDecoder().decode(item.ink))),
+    )
+
 /** Load native Ink and build a real pressure stroke before the editor receives input. */
 object InkWarmup {
     private val started = java.util.concurrent.atomic.AtomicBoolean()
@@ -147,7 +154,7 @@ class LiveHighlight(val color: Int, val width: Float) {
  * Thread-safe LRU of native Ink strokes shared by the UI and tile threads. Ink strokes are
  * immutable, so one tessellation serves every renderer.
  */
-class StrokeCache(private val limit: Int = 3000) {
+class StrokeCache(internal val limit: Int = 3000) {
     private val map = LinkedHashMap<String, Pair<Item, Stroke>>(256, .75f, true)
 
     @Synchronized
@@ -160,6 +167,17 @@ class StrokeCache(private val limit: Int = 3000) {
                         previous.ink == item.ink)
             }
             ?.second
+
+    @Synchronized
+    fun clear() = map.clear()
+
+    companion object {
+        /**
+         * Meshes shared by the editor and library previews, so reopening a note or drawing its
+         * preview after closing it does not tessellate every stroke again.
+         */
+        val shared = StrokeCache()
+    }
 
     @Synchronized
     fun put(item: Item, stroke: Stroke) {
@@ -177,7 +195,15 @@ class StrokeCache(private val limit: Int = 3000) {
 class ObjectRenderer(
     private val vectorHighlights: Boolean = true,
     private val sharedStrokes: StrokeCache? = null,
+    /**
+     * Pen strokes thinner than this many screen pixels, whose mesh is not cached, are drawn as
+     * their centerline. Used for small previews, where pressure detail is invisible and
+     * tessellating every stroke of a dense note would dominate the render.
+     */
+    private val sketchBelowPx: Float = 0f,
 ) {
+    private val sketch = Path()
+    private val scaleProbe = FloatArray(4)
     private var cachedScene: List<Item>? = null
     private var foreground: List<Item> = emptyList()
     private var cachedHighlights: List<Item> = emptyList()
@@ -324,6 +350,30 @@ class ObjectRenderer(
         }
     }
 
+    private fun sketched(canvas: Canvas, item: Item, worldToScreen: Matrix): Boolean {
+        if (sketchBelowPx <= 0f || item.points.size < 2) return false
+        scaleProbe[0] = 0f
+        scaleProbe[1] = 0f
+        scaleProbe[2] = item.width
+        scaleProbe[3] = 0f
+        val local = item.transform.matrix()
+        local.postConcat(worldToScreen)
+        local.mapPoints(scaleProbe)
+        val px = kotlin.math.hypot(scaleProbe[2] - scaleProbe[0], scaleProbe[3] - scaleProbe[1])
+        if (px >= sketchBelowPx) return false
+        if ((sharedStrokes?.get(item) ?: strokes[item.id]?.second) != null) return false
+        sketch.rewind()
+        val points = item.points
+        sketch.moveTo(points[0].x, points[0].y)
+        for (i in 1 until points.size) sketch.lineTo(points[i].x, points[i].y)
+        canvas.concat(item.transform.matrix())
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = item.width
+        paint.color = item.color
+        canvas.drawPath(sketch, paint)
+        return true
+    }
+
     fun draw(canvas: Canvas, item: Item, worldToScreen: Matrix) {
         if (item.kind == "HIGHLIGHTER") {
             drawScene(canvas, listOf(item), worldToScreen)
@@ -334,6 +384,8 @@ class ObjectRenderer(
             paint.style = Paint.Style.FILL
             paint.color = item.color
             canvas.drawPath(fillPath(item), paint)
+        } else if (item.ink != null && sketched(canvas, item, worldToScreen)) {
+            // Drawn as a centerline.
         } else if (item.ink != null) {
             val shared = sharedStrokes
             val cached = if (shared != null) shared.get(item) else
@@ -346,12 +398,7 @@ class ObjectRenderer(
                     ?.second
             val stroke =
                 cached
-                    ?: Stroke(
-                            brush(item.color, item.width, item.kind == "HIGHLIGHTER"),
-                            StrokeInputBatch.decode(
-                                ByteArrayInputStream(Base64.getDecoder().decode(item.ink))
-                            ),
-                        )
+                    ?: inkStroke(item)
                         .also {
                             strokeBuildCount++
                             if (shared != null) shared.put(item, it)

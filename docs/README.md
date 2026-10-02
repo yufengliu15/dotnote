@@ -2,7 +2,7 @@
 
 Start here when joining the project or changing the app. These documents describe the implementation, not a proposed design.
 
-**Current release:** app 0.12.1, version code 23. `app/build.gradle.kts` is authoritative for current app metadata; [CHANGELOG.md](../CHANGELOG.md) records changes and [VALIDATION.md](../VALIDATION.md) records what was tested. Historical entries keep their original versions. Follow [versioning and source control](build-test-release.md#versioning-and-source-control) when shipping any change.
+**Current release:** app 0.13.0, version code 24. `app/build.gradle.kts` is authoritative for current app metadata; [CHANGELOG.md](../CHANGELOG.md) records changes and [VALIDATION.md](../VALIDATION.md) records what was tested. Historical entries keep their original versions. Follow [versioning and source control](build-test-release.md#versioning-and-source-control) when shipping any change.
 
 ## What the app is
 

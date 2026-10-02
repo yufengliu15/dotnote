@@ -441,6 +441,9 @@ class VaultFiles(val root: File, private val cacheFile: File? = null) {
     }
 
     /** Exact document JSON stored in a note file. */
+    /** Identity of a note's current file; changes whenever the file is replaced or edited. */
+    internal fun noteStamp(id: String): FileStamp? = notePaths[id]?.let { FileStamp.of(target(it)) }
+
     fun readDocument(id: String): String {
         val path = requireNotNull(notePaths[id]) { "Note file is missing" }
         return documentText(target(path))

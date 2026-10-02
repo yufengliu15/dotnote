@@ -71,14 +71,14 @@ Tests are in [`app/src/test/java/dev/dotnote/app/`](../app/src/test/java/dev/dot
 
 These are ordinary JUnit tests with a JVM `org.json` dependency. Native Android Ink rendering, actual Room/WorkManager, Views and PDF APIs require instrumentation; a passing JVM suite cannot establish those behaviors.
 
-## Test inventory: 58 Android tests
+## Test inventory: 69 Android tests
 
 Tests are in [`app/src/androidTest/java/dev/dotnote/app/`](../app/src/androidTest/java/dev/dotnote/app/).
 
 | Class | Count | Test methods and coverage |
 | --- | --- | --- |
 | `TextTemplateTest` | 6 | Resize vs proportional Scale, wrapping-width retention and explicit paragraphs; text dialog/taps, rotation, edit/history, selection/move/resize/recolor/delete/reopen; screen/PDF text pixels; independent templates with attachment/backup/rebuild; template creation/picker UI; non-destructive Room 1→2 migration |
-| `LargeNoteStorageTest` | 2 | Oversized existing documents reproduce the old CursorWindow failure; save/no-op/reopen, folder/note rename/move/delete, snapshot and ZIP merge restore; Unicode and exact/empty chunk boundaries |
+| `LargeNoteStorageTest` | 2 | Oversized existing documents keep only metadata in the index row (no CursorWindow overflow); save/no-op/reopen, folder/note rename/move/delete, snapshot and ZIP merge restore; Unicode and exact/empty chunk boundaries |
 | `StartupLoadingTest` | 2 | Unbound-vault local-loading wording/no empty-list flash; 160-note/32,000-object scan/index/reopen measurement and stale-index recovery |
 | `NativePipelineTest` | 2 | `nativeInkSurvivesSerializationAndRenders`; `pdfImportExportBackupRestoreAndFailedRestoreAreConsistent` |
 | `FlingNavigationTest` | 3 | 40-page PDF fling, speed/direction/zoom, decay and saved camera; touch/stylus/page/fit/release interruption; slow/cancelled/pinch/drawing exclusion |
@@ -94,7 +94,7 @@ Tests are in [`app/src/androidTest/java/dev/dotnote/app/`](../app/src/androidTes
 | `InkStartupTest` | 1 | `firstPenStrokeIsVisibleBeforePenUp`: first-stroke dispatch and screenshot visibility before ACTION_UP, plus no phantom warmup item |
 | `TileRenderingTest` | 1 | Tiled frames equal direct vector rendering for the first (fallback) frame, finished tiles, whole-pixel pans, appends, erasing (in-place repaint), marker re-stacking, drag exclusion/drop and a settled zoom level |
 | `CodecCompatibilityTest` | 1 | The direct encoder writes byte-identical text to Android org.json (escapes, floats, negative zero, Unicode); decoding of org.json and pretty-printed files |
-| `PerformanceBenchmarkTest` | 8 | Before/after workloads (compile against 0.9.1 too): dense-note pan, pinch, pen-up commit/save/burst, eraser, lasso, selection drag, opening 1,200/3,000-stroke notes, vault startup cold/warm, GitHub backup/restore with 80 ms simulated latency. Logs `BENCH` lines under `DotnoteBench` |
+| `PerformanceBenchmarkTest` | 9 | Before/after workloads (compile against 0.12.1 too): dense-note pan, pinch, pen-up commit/save/burst, eraser, lasso, selection drag, opening 1,200/3,000-stroke notes, cold read and first library preview of a 3,000-stroke note, vault startup cold/warm, GitHub backup/restore with 80 ms simulated latency. Logs `BENCH` lines under `DotnoteBench` |
 
 `QualityOfLifeTest` adds two Android tests for a three-second resettable edit debounce, immediate large-note flush, no delayed duplicate, file-authoritative reopen, bucket pixels, marker opacity and exported PDF coverage. `QualityOfLifeUiTest` adds a real-pointer test for held note/folder drops in both directions, palette-to-Pen activation and horizontal Fill choices, a real finger fill tap, undo/redo and close.
 

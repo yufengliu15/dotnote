@@ -1,6 +1,7 @@
 package dev.dotnote.app
 
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.util.LruCache
@@ -58,18 +59,33 @@ internal object NotePreviews {
             override fun sizeOf(key: PreviewKey, value: Bitmap) = value.allocationByteCount
         }
 
+    private const val DISK_LIMIT = 600
+
     suspend fun load(store: Store, key: PreviewKey): Bitmap? =
         withContext(Dispatchers.IO) {
             mutex.withLock {
                 cache.get(key)?.let {
                     return@withLock it
                 }
+                // Rendered previews persist across launches, so a library of dense notes is not
+                // decoded and re-tessellated every time the app starts.
+                val folder = File(store.context.cacheDir, "note-previews")
+                val prefix = Integer.toHexString((key.vault + "\u0000" + key.note).hashCode())
+                val file = File(folder, "$prefix-${key.note}-${key.modified}-${key.width}x${key.height}.png")
+                readCached(file, key)?.let {
+                    cache.put(key, it)
+                    return@withLock it
+                }
                 try {
-                    val note = store.dao.note(key.note) ?: return@withLock null
+                    // Right after a note is closed this reuses its parsed scene and stroke meshes.
+                    val (note, document) = store.dao.open(key.note) ?: return@withLock null
                     if (note.modified != key.modified) return@withLock null
                     coroutineContext.ensureActive()
-                    render(DocumentCodec.decode(note.document), store.assets, key.width, key.height)
-                        .also { cache.put(key, it) }
+                    render(document, store.assets, key.width, key.height, StrokeCache.shared)
+                        .also {
+                            cache.put(key, it)
+                            writeCached(folder, prefix, key.note, file, it)
+                        }
                 } catch (cancelled: kotlinx.coroutines.CancellationException) {
                     throw cancelled
                 } catch (_: Exception) {
@@ -79,7 +95,45 @@ internal object NotePreviews {
             }
         }
 
-    internal suspend fun render(document: Document, assets: File, width: Int, height: Int): Bitmap {
+    private fun readCached(file: File, key: PreviewKey): Bitmap? =
+        try {
+            if (!file.isFile) null
+            else
+                BitmapFactory.decodeFile(
+                        file.path,
+                        BitmapFactory.Options().apply { inMutable = false },
+                    )
+                    ?.takeIf { it.width == key.width && it.height == key.height }
+        } catch (_: Exception) {
+            null
+        }
+
+    private fun writeCached(folder: File, prefix: String, note: String, file: File, bitmap: Bitmap) {
+        try {
+            folder.mkdirs()
+            // Older previews of the same note are stale once a newer one exists.
+            folder.listFiles()?.let { files ->
+                files.filter { it.name.startsWith("$prefix-$note-") && it != file }.forEach { it.delete() }
+                if (files.size > DISK_LIMIT)
+                    files.sortedBy { it.lastModified() }.take(files.size - DISK_LIMIT / 2).forEach {
+                        it.delete()
+                    }
+            }
+            val temp = File(folder, file.name + ".tmp")
+            temp.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+            if (!temp.renameTo(file)) temp.delete()
+        } catch (_: Exception) {
+            // The disk copy is only a cache.
+        }
+    }
+
+    internal suspend fun render(
+        document: Document,
+        assets: File,
+        width: Int,
+        height: Int,
+        strokes: StrokeCache? = null,
+    ): Bitmap {
         val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
         try {
             val canvas = Canvas(bitmap)
@@ -123,7 +177,8 @@ internal object NotePreviews {
                 }
             }
             coroutineContext.ensureActive()
-            ObjectRenderer(vectorHighlights = false).drawScene(canvas, items, matrix)
+            ObjectRenderer(vectorHighlights = false, sharedStrokes = strokes, sketchBelowPx = 2f)
+                .drawScene(canvas, items, matrix)
             return bitmap
         } catch (error: Throwable) {
             bitmap.recycle()

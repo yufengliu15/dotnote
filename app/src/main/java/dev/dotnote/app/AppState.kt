@@ -403,7 +403,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
                 return@runAction
             }
             if (!flush() || !switchVaultNow(target)) return@runAction
-            val found = store.dao.note(action.note)
+            val found = store.dao.open(action.note)
             if (found == null) {
                 withContext(Dispatchers.IO) {
                     RecentNotes(getApplication()).remove(target, action.note)
@@ -411,7 +411,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
                 message = "This note was deleted or moved to another vault"
             } else {
                 newNoteRequested = false
-                openNow(found)
+                openNow(found.first, found.second)
             }
         }
     }
@@ -499,8 +499,8 @@ class AppState(application: Application) : AndroidViewModel(application) {
                         catalog.list().any { it.localId == restoredVault }
                 ) {
                     check(switchVaultNow(restoredVault)) { "Could not reopen the quick note" }
-                    store.dao.note(restoredNote)?.let {
-                        openNow(it)
+                    store.dao.open(restoredNote)?.let {
+                        openNow(it.first, it.second)
                         if (request == systemNoteRequest) systemNoteOpening = false
                         return@runAction
                     }
@@ -520,22 +520,23 @@ class AppState(application: Application) : AndroidViewModel(application) {
         val start = android.os.SystemClock.elapsedRealtimeNanos()
         if (flush()) {
             val flushed = android.os.SystemClock.elapsedRealtimeNanos()
-            store.dao.note(id)?.let {
+            store.dao.open(id)?.let {
                 val read = android.os.SystemClock.elapsedRealtimeNanos()
-                openNow(it)
+                openNow(it.first, it.second)
                 if (BuildConfig.DEBUG)
                     android.util.Log.i(
                         "DotnoteOpen",
-                        "flush=${(flushed - start) / 1e6} ms, read=${(read - flushed) / 1e6} ms, " +
-                            "decode+apply=${(android.os.SystemClock.elapsedRealtimeNanos() - read) / 1e6} ms",
+                        "flush=${(flushed - start) / 1e6} ms, read+decode=${(read - flushed) / 1e6} ms, " +
+                            "apply=${(android.os.SystemClock.elapsedRealtimeNanos() - read) / 1e6} ms",
                     )
             }
         }
     }
 
-    private suspend fun openNow(value: Note) {
-        val decoded = withContext(Dispatchers.IO) { DocumentCodec.decode(value.document) }
-        note = value
+    private suspend fun openNow(value: Note, parsed: Document? = null) {
+        val decoded = parsed ?: withContext(Dispatchers.IO) { DocumentCodec.decode(value.document) }
+        // The editor keeps the parsed scene; the serialized text is not needed while editing.
+        note = value.copy(document = "")
         textEdit = null
         folderId = value.folderId
         document = decoded

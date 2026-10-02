@@ -309,10 +309,12 @@ class PerformanceBenchmarkTest {
             val canvas = Canvas(bitmap)
             try {
                 val zooms = List(8) { .55f + .45f * (1 + sin(it * Math.PI / 4).toFloat()) / 2 }
+                val layers = List(3) { mutableListOf<Double>() }
+                var measure = false
                 fun frame(z: Float): Double {
                     e.state.camera(Camera(-100f * z, -50f * z, z))
                     e.view.refresh()
-                    return drawLayers(e.view, canvas)
+                    return drawLayers(e.view, canvas, if (measure) layers else null)
                 }
                 zooms.forEach {
                     instrumentation.runOnMainSync { frame(it) }
@@ -321,8 +323,41 @@ class PerformanceBenchmarkTest {
                     waitTiles(e.view)
                 }
                 val times = mutableListOf<Double>()
+                measure = true
                 instrumentation.runOnMainSync { zooms.forEach { times.add(frame(it)) } }
                 report("zoom.frame.software", times)
+                report("zoom.layer.background", layers[0])
+                report("zoom.layer.markers", layers[1])
+                report("zoom.layer.ink", layers[2])
+                // Real hardware-rendered frames of a continuous pinch, including RenderThread work.
+                val totals = mutableListOf<Double>()
+                val listener =
+                    Window.OnFrameMetricsAvailableListener { _, metrics, _ ->
+                        synchronized(totals) {
+                            totals.add(metrics.getMetric(FrameMetrics.TOTAL_DURATION) / 1e6)
+                        }
+                    }
+                instrumentation.runOnMainSync {
+                    e.window.addOnFrameMetricsAvailableListener(
+                        listener,
+                        android.os.Handler(android.os.Looper.getMainLooper()),
+                    )
+                }
+                SystemClock.sleep(500)
+                synchronized(totals) { totals.clear() }
+                List(16) { .55f + .45f * (1 + sin(it * Math.PI / 8).toFloat()) / 2 }.forEach {
+                    instrumentation.runOnMainSync {
+                        e.state.camera(Camera(-100f * it, -50f * it, it))
+                        e.view.refresh()
+                    }
+                    instrumentation.waitForIdleSync()
+                    SystemClock.sleep(16)
+                }
+                SystemClock.sleep(500)
+                instrumentation.runOnMainSync {
+                    e.window.removeOnFrameMetricsAvailableListener(listener)
+                }
+                synchronized(totals) { if (totals.size > 4) report("zoom.frame.hardware", totals) }
             } finally {
                 bitmap.recycle()
             }
@@ -571,6 +606,49 @@ class PerformanceBenchmarkTest {
             assertEquals(notes[7].title, store.dao.note(notes[7].id)!!.title)
             report("startup.cold.60x120", listOf(cold))
             report("startup.warm.60x120", warm)
+        } finally {
+            store.db.close()
+            context.deleteDatabase(databaseName)
+            store.root.deleteRecursively()
+        }
+    }
+
+    /** First read of a dense note after launch, and its first library preview. */
+    @Test
+    fun coldNoteReadAndPreview() = runBlocking {
+        val databaseName = "bench-${newId()}.db"
+        var store = Store(context, databaseName)
+        val note = Note(title = "Dense", document = DocumentCodec.encode(Document(denseScene(3000))))
+        try {
+            store.ready.await()
+            store.dao.put(note)
+            val reads = mutableListOf<Double>()
+            val previews = mutableListOf<Double>()
+            repeat(3) { round ->
+                store.db.close()
+                store = Store(context, databaseName)
+                store.ready.await()
+                File(context.cacheDir, "note-previews").deleteRecursively()
+                var start = System.nanoTime()
+                val read = DocumentCodec.decode(store.dao.note(note.id)!!.document)
+                reads.add(ms(start))
+                assertEquals(3152, read.items.size)
+                store.db.close()
+                store = Store(context, databaseName)
+                store.ready.await()
+                val modified = store.dao.note(note.id)!!.modified
+                start = System.nanoTime()
+                // A new size each round so the in-memory preview cache cannot answer.
+                val bitmap =
+                    NotePreviews.load(
+                        store,
+                        PreviewKey(store.root.absolutePath, note.id, modified, 448, 200 + round),
+                    )
+                previews.add(ms(start))
+                assertNotNull(bitmap)
+            }
+            report("note.read.cold.3000", reads)
+            report("preview.cold.3000", previews)
         } finally {
             store.db.close()
             context.deleteDatabase(databaseName)

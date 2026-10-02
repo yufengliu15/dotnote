@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.0 — 2026-10-02
+
+- Rendering overhaul for dense notes: finished ink and highlights are drawn once into 512 px tiles on a background thread, and frames only composite tiles, so pan, zoom, pen-up, eraser and selection costs no longer grow with the number of visible strokes. Edits repaint only the changed pixels of affected tiles; a moved selection is translated as one cached image; a whole-note overview fills areas revealed while zooming out; the paper and dots are one cached image; marker tiles are stored pre-faded, so no translucent layer is needed while idle. Stroke meshes for a tile are built on several cores.
+- Faster opening: a streaming JSON parser replaces org.json for notes; the parsed scene and stroke meshes of recently used notes are reused when reopening a note or drawing its library preview while its file is unchanged. Library previews are kept on disk, so dense notes are not rendered again on every launch. Eraser, tap and lasso selection query nearby items only; PDF export visits only the items on each page. Editor chrome no longer recomposes on every pan frame.
+- Faster saving: the Room index stores metadata only (no note content; replaces 0.9.2's chunked reads), each object's JSON is cached and streamed into the file byte-identically, queued saves of a note collapse into one write, and the three-second autosave reuses one timer instead of starting a coroutine per edit.
+- Faster startup and sync: validated note files are remembered by inode/size/nanosecond mtime in app-private storage, so unchanged notes are not re-read on startup, before backups or after import/restore. GitHub backups send changed text inside the tree request, reuse the last tree listing and blob hashes, need one request when nothing changed, hard-link snapshots, and restores download up to six files at a time. Folder renames/moves rewrite only notes whose paths change.
+- Added `PerformanceBenchmarkTest`, `TileRenderingTest` and `CodecCompatibilityTest`. No file format change. Android versionCode: 24.
+
 ## 0.12.1 — 2026-10-02
 
 - Deliver the colour-to-Pen, held folder dragging, Pen/Highlighter bucket fill and faster three-second autosaving changes from the 0.12.0 development snapshot through the signed GitHub Actions release workflow. Android versionCode: 23.

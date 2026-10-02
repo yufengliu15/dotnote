@@ -45,6 +45,49 @@ class FileLibraryDao(private val store: Store, private val index: RoomLibraryDao
         }
     }
 
+    private class Decoded(val modified: Long, val stamp: FileStamp, val document: Document)
+
+    // Parsed scenes of the last few opened or saved notes. Reopening a note, or rendering its
+    // library preview right after closing it, reuses the scene while the file is unchanged.
+    private val decoded =
+        object : LinkedHashMap<String, Decoded>(8, .75f, true) {
+            override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Decoded>?) =
+                size > 3
+        }
+
+    private fun remember(id: String, modified: Long, stamp: FileStamp?, document: Document) {
+        synchronized(decoded) {
+            if (stamp == null) decoded.remove(id) else decoded[id] = Decoded(modified, stamp, document)
+        }
+    }
+
+    /**
+     * A note with its parsed scene. [Note.document] is left empty; the file is only read and
+     * parsed when no remembered scene matches the file on disk.
+     */
+    suspend fun open(id: String): Pair<Note, Document>? {
+        store.ready.await()
+        return withContext(Dispatchers.IO) {
+            var text: String? = null
+            var stamp: FileStamp? = null
+            var reuse: Document? = null
+            val summary =
+                store.mutex.withLock {
+                    val summary = index.note(id) ?: return@withLock null
+                    stamp = store.files.noteStamp(id)
+                    val known = synchronized(decoded) { decoded[id] }
+                    if (known != null && known.stamp == stamp && known.modified == summary.modified)
+                        reuse = known.document
+                    else text = store.files.readDocument(id)
+                    summary
+                } ?: return@withContext null
+            val document = reuse ?: DocumentCodec.decode(text!!).also {
+                remember(id, summary.modified, stamp, it)
+            }
+            summary.copy(document = "") to document
+        }
+    }
+
     /** Index metadata without reading the note's content. */
     suspend fun summary(id: String): Note? {
         store.ready.await()
@@ -178,6 +221,7 @@ class FileLibraryDao(private val store: Store, private val index: RoomLibraryDao
                 if (summary != null) {
                     store.files.writeScene(summary.copy(modified = modified), document, assets)
                     index.save(id, "", modified)
+                    remember(id, modified, store.files.noteStamp(id), document)
                     store.changed()
                     written = true
                 }
