@@ -84,6 +84,8 @@ class FileLibraryDao(private val store: Store, private val index: RoomLibraryDao
             val document = reuse ?: DocumentCodec.decode(text!!).also {
                 remember(id, summary.modified, stamp, it)
             }
+            if (BuildConfig.DEBUG)
+                android.util.Log.i("DotnoteOpen", "scene ${if (reuse != null) "reused" else "parsed"}")
             summary.copy(document = "") to document
         }
     }

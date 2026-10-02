@@ -97,10 +97,8 @@ internal class SceneTiles(
             Executors.newFixedThreadPool(inkThreads) { r ->
                 Thread(
                         {
-                            Process.setThreadPriority(
-                                Process.THREAD_PRIORITY_DEFAULT +
-                                    Process.THREAD_PRIORITY_LESS_FAVORABLE
-                            )
+                            // Extra parallelism only: never compete with the UI thread.
+                            Process.setThreadPriority(Process.THREAD_PRIORITY_BACKGROUND)
                             r.run()
                         },
                         "Dotnote-Ink",
