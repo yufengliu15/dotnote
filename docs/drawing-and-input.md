@@ -1,6 +1,6 @@
 # Drawing and input pipeline
 
-[Documentation index](README.md) · Sources: [NotebookView.kt](../app/src/main/java/dev/dotnote/app/NotebookView.kt), [SceneTiles.kt](../app/src/main/java/dev/dotnote/app/SceneTiles.kt), [Rendering.kt](../app/src/main/java/dev/dotnote/app/Rendering.kt), [Document.kt](../app/src/main/java/dev/dotnote/app/Document.kt), [SceneResources.kt](../app/src/main/java/dev/dotnote/app/SceneResources.kt)
+[Documentation index](README.md) · Sources: [NotebookView.kt](../android/app/src/main/java/dev/dotnote/app/NotebookView.kt), [SceneTiles.kt](../android/app/src/main/java/dev/dotnote/app/SceneTiles.kt), [Rendering.kt](../android/app/src/main/java/dev/dotnote/app/Rendering.kt), [Document.kt](../shared/src/commonMain/kotlin/dev/dotnote/app/Document.kt), [SceneResources.kt](../shared/src/commonMain/kotlin/dev/dotnote/app/SceneResources.kt)
 
 ## Two rendering paths, one saved model
 

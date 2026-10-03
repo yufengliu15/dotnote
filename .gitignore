@@ -19,3 +19,12 @@ dist/SHA256SUMS-0.9.1
 dist/release-0.9.1.json
 dist/preview/text-resize-0.9.1.png
 dist/preview/text-scale-0.9.1.png
+
+# Native Apple build products and developer-local signing state.
+ios/build/
+**/xcuserdata/
+*.xcuserstate
+*.xcresult/
+*.ipa
+.DerivedData/
+ios/build-device/

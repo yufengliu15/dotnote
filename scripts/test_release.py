@@ -66,3 +66,15 @@ class ReleaseChannelTest(unittest.TestCase):
         self.assertIn("--prerelease=false", create)
         self.assertIn("--prerelease=false", edit)
         self.assertIn("--latest=true", edit)
+
+
+class MonorepoVersionTest(unittest.TestCase):
+    def test_ipad_metadata_matches_android_version_authority(self):
+        import re
+        root = Path(__file__).resolve().parent.parent
+        gradle = (root / "android/app/build.gradle.kts").read_text()
+        project = (root / "ios/Dotnote.xcodeproj/project.pbxproj").read_text()
+        version = re.search(r'versionName\s*=\s*"([^"]+)"', gradle)[1]
+        code = re.search(r'versionCode\s*=\s*(\d+)', gradle)[1]
+        self.assertEqual([version, version], re.findall(r'MARKETING_VERSION = "([^"]+)"', project))
+        self.assertEqual([code, code], re.findall(r'CURRENT_PROJECT_VERSION = "([^"]+)"', project))

@@ -20,7 +20,7 @@ def run(*args):
 
 
 def metadata():
-    config = (ROOT / "app/build.gradle.kts").read_text()
+    config = (ROOT / "android/app/build.gradle.kts").read_text()
     return re.search(r'versionName\s*=\s*"([0-9.]+)"', config)[1], int(re.search(r'versionCode\s*=\s*(\d+)', config)[1])
 
 

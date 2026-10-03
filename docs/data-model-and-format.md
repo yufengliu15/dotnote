@@ -1,6 +1,6 @@
 # Data model and portable format
 
-[Documentation index](README.md) · Sources: [Document.kt](../app/src/main/java/dev/dotnote/app/Document.kt), [VaultFiles.kt](../app/src/main/java/dev/dotnote/app/VaultFiles.kt), [AppState.kt](../app/src/main/java/dev/dotnote/app/AppState.kt)
+[Documentation index](README.md) · Sources: [Document.kt](../shared/src/commonMain/kotlin/dev/dotnote/app/Document.kt), [VaultFiles.kt](../android/app/src/main/java/dev/dotnote/app/VaultFiles.kt), [AppState.kt](../android/app/src/main/java/dev/dotnote/app/AppState.kt)
 
 ## Identities and directory layout
 
@@ -113,6 +113,10 @@ For pen strokes, the points support bounds/hit tests while `ink` reconstructs pr
 PDF items use `kind: "PDF"`, an `asset`, a `page`, and two bounding corners. Ordinary PDFs and PowerPoint slides are locked (`Item.locked`). Imported images additionally store `image: true`; Select hits their rectangular interior and can move, resize and delete them. All PDF-backed items stay on the attachment layer underneath ink. Eraser and recoloring exclude images, so erasing annotations cannot delete an image. Original PDF bytes are shared by all pages that reference the same asset.
 
 This is an additive version-1 field with default false. Older files remain readable, and older builds display images as locked PDF pages (and may drop the new flag when saving). The 0.8.0 converter did not retain image provenance, so old images cannot safely be distinguished from genuine single-page PDFs. Reimport them to enable selection; do not guess from page count or dimensions.
+
+## Portable iPad strokes
+
+Optional `pressures` stores one value in `0..1` per point for portable strokes without an AndroidX `ink` payload. Absence defaults to full width; malformed length or values are rejected. PEN polylines render on both current platforms, including single-point dots. Native Android `ink` remains unchanged and preserved on iPad. Older Android versions need updating before opening newly drawn iPad notes. See [platform compatibility](ipados-and-multiplatform.md).
 
 ## Text and templates (0.9.0)
 

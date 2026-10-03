@@ -2,7 +2,7 @@
 
 Start here when joining the project or changing the app. These documents describe the implementation, not a proposed design.
 
-**Current release:** app 0.13.0, version code 24. `app/build.gradle.kts` is authoritative for current app metadata; [CHANGELOG.md](../CHANGELOG.md) records changes and [VALIDATION.md](../VALIDATION.md) records what was tested. Historical entries keep their original versions. Follow [versioning and source control](build-test-release.md#versioning-and-source-control) when shipping any change.
+**Current release:** app 0.14.0, version code 25. `android/app/build.gradle.kts` is authoritative for current app metadata; [CHANGELOG.md](../CHANGELOG.md) records changes and [VALIDATION.md](../VALIDATION.md) records what was tested. Historical entries keep their original versions. Follow [versioning and source control](build-test-release.md#versioning-and-source-control) when shipping any change.
 
 ## What the app is
 
@@ -11,6 +11,8 @@ Dotnote is an offline Kotlin Android tablet notebook: an unbounded dot-grid scen
 Notes are portable `.dotnote` JSON files. A vault is a directory containing notes, folder metadata, writing settings, and original PDFs. Room indexes that directory for the app. Optional GitHub backups upload snapshots and explicitly restore another local vault. They do not synchronize two devices continuously.
 
 There is no server, subscription, analytics, handwriting recognition, or collaboration layer. Local editing requires neither internet nor an account.
+
+The repository also contains a native iPadOS port backed by Kotlin Multiplatform. See [iPadOS and shared code](ipados-and-multiplatform.md) for architecture, setup, verification and parity limits.
 
 ## Read in this order
 
@@ -50,9 +52,9 @@ GitHub sign-in now waits for Dotnote to return to the foreground and retries tem
 
 ## Where things live
 
-- App source: [`app/src/main/java/dev/dotnote/app/`](../app/src/main/java/dev/dotnote/app/).
-- App identity and Android components: [manifest](../app/src/main/AndroidManifest.xml).
-- Tests: [JVM](../app/src/test/java/dev/dotnote/app/) and [Android instrumentation](../app/src/androidTest/java/dev/dotnote/app/).
-- Build configuration: [root Gradle](../build.gradle.kts), [app Gradle](../app/build.gradle.kts), [settings](../settings.gradle.kts).
+- App source: [`android/app/src/main/java/dev/dotnote/app/`](../android/app/src/main/java/dev/dotnote/app/).
+- App identity and Android components: [manifest](../android/app/src/main/AndroidManifest.xml).
+- Tests: [JVM](../android/app/src/test/java/dev/dotnote/app/) and [Android instrumentation](../android/app/src/androidTest/java/dev/dotnote/app/).
+- Build configuration: [root Gradle](../build.gradle.kts), [app Gradle](../android/app/build.gradle.kts), [settings](../settings.gradle.kts).
 - Release evidence: [VALIDATION.md](../VALIDATION.md). Open work: [TODO.md](../TODO.md).
 - Local release artifacts: `dist/`; APK/ZIP files are ignored by Git. The source repository is separate from any repository holding a user's vault.

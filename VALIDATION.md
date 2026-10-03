@@ -1,3 +1,18 @@
+# 0.14.0 multiplatform validation
+
+App version **0.14.0 / code 25**, October 3, 2026. Android metadata remains authoritative in `android/app/build.gradle.kts`; iPad project metadata is checked against it by the release tests.
+
+- **Shared Kotlin:** 11 tests pass on JVM and on the Apple Silicon simulator target. Five existing spatial-index/cache tests moved into common tests; six port tests cover pressure geometry, codec roundtrip, history, failed-load preservation, selection/PDF locking and camera invariants.
+- **Android:** 41 app JVM tests pass; debug APK and instrumentation APK compile; debug lint passes with **0 errors / 58 warnings**. The native pipeline suite now includes a portable iPad-stroke pixel regression, in addition to existing native ink and PDF/backup checks. Instrumentation execution is enforced by the release workflow on its accelerated Android emulator.
+- **iPad:** simulator app and native test bundle compile with Xcode 27.0; all five native filesystem/rendering tests pass on the iPad Pro simulator with iOS 17.0. The ARM64 device Release app also compiles with signing disabled. The native pixel test verifies portable stroke bends. CI runs the complete native suite, common tests, and the unsigned device build.
+- **Release tooling:** Python release-policy/metadata tests pass; relative documentation links and `git diff --check` pass. Source archives now include Android, iPad, and shared Kotlin sources. The Release Dotnote workflow must pass its iPad and Android gates and package the signed APK from a clean commit before publication.
+
+Local checks used JDK 20 with JVM output targeting Java 17, Kotlin 2.2.21, Gradle 8.13, and SDK 36. CI uses JDK 17. No production app data was cleared and no physical-device installation was performed. Local Android debug signing is not claimed to match distribution signing; CI uses the pinned distribution certificate.
+
+The iPad implementation is an initial native port with documented feature differences, not full Android parity. Physical Pencil latency/palm rejection, Files-provider acceptance, large-note performance, and termination during background save remain device acceptance work. Apple signing, TestFlight, and App Store publication are not configured. See [the iPadOS guide](docs/ipados-and-multiplatform.md).
+
+---
+
 # 0.13.0 performance validation
 
 App version **0.13.0 / code 24**, October 2, 2026. Branch `perf/0.13.0-performance`, built on the 0.12.1 release commit `6b36f55` (0.12.1 changes take precedence where the two overlapped). This is a **development snapshot** until the Release Dotnote workflow builds it from `main`.

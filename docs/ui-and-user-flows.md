@@ -1,6 +1,6 @@
 # Interface and user flows
 
-[Documentation index](README.md) · Main sources: [MainActivity.kt](../app/src/main/java/dev/dotnote/app/MainActivity.kt), [NewNoteDialog.kt](../app/src/main/java/dev/dotnote/app/NewNoteDialog.kt), [VaultUi.kt](../app/src/main/java/dev/dotnote/app/VaultUi.kt)
+[Documentation index](README.md) · Main sources: [MainActivity.kt](../android/app/src/main/java/dev/dotnote/app/MainActivity.kt), [NewNoteDialog.kt](../android/app/src/main/java/dev/dotnote/app/NewNoteDialog.kt), [VaultUi.kt](../android/app/src/main/java/dev/dotnote/app/VaultUi.kt)
 
 ## Activity shell
 
@@ -74,7 +74,7 @@ New text uses the selected palette color and the most recent text size for that 
 
 Writing settings adjusts pen width 1–12, dock position, finger drawing, current note's dot visibility, custom hex color, and grid subdivisions. Highlighter width is five times pen width. Settings other than dots persist per vault after a short debounce; the current tool itself is transient.
 
-[`ColorPickerDialog`](../app/src/main/java/dev/dotnote/app/ColorPicker.kt) has a 220 dp hue/saturation wheel, brightness slider, color preview and six-character hex field. Wheel angle controls hue, distance from center controls saturation, slider controls HSV value. Hex input filters to six hexadecimal characters; Apply is enabled only at six characters. Output is opaque ARGB. Cancel leaves the target unchanged.
+[`ColorPickerDialog`](../android/app/src/main/java/dev/dotnote/app/ColorPicker.kt) has a 220 dp hue/saturation wheel, brightness slider, color preview and six-character hex field. Wheel angle controls hue, distance from center controls saturation, slider controls HSV value. Hex input filters to six hexadecimal characters; Apply is enabled only at six characters. Output is opaque ARGB. Cancel leaves the target unchanged.
 
 ## Vault chooser and rename
 

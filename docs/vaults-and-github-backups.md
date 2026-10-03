@@ -1,6 +1,6 @@
 # Vaults and GitHub backups
 
-[Documentation index](README.md) · Sources: [GitHub.kt](../app/src/main/java/dev/dotnote/app/GitHub.kt), [GitHubSignIn.kt](../app/src/main/java/dev/dotnote/app/GitHubSignIn.kt), [GitBackup.kt](../app/src/main/java/dev/dotnote/app/GitBackup.kt), [VaultCatalog.kt](../app/src/main/java/dev/dotnote/app/VaultCatalog.kt), [VaultUi.kt](../app/src/main/java/dev/dotnote/app/VaultUi.kt)
+[Documentation index](README.md) · Sources: [GitHub.kt](../android/app/src/main/java/dev/dotnote/app/GitHub.kt), [GitHubSignIn.kt](../android/app/src/main/java/dev/dotnote/app/GitHubSignIn.kt), [GitBackup.kt](../android/app/src/main/java/dev/dotnote/app/GitBackup.kt), [VaultCatalog.kt](../android/app/src/main/java/dev/dotnote/app/VaultCatalog.kt), [VaultUi.kt](../android/app/src/main/java/dev/dotnote/app/VaultUi.kt)
 
 ## Contract
 

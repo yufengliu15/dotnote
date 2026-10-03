@@ -48,10 +48,10 @@ def main():
     args = parser.parse_args()
     if args.require_release and args.allow_dirty:
         raise SystemExit("Published releases cannot allow dirty sources.")
-    config = (ROOT / "app/build.gradle.kts").read_text()
+    config = (ROOT / "android/app/build.gradle.kts").read_text()
     version = re.search(r'versionName\s*=\s*"([0-9]+\.[0-9]+\.[0-9]+)"', config)[1]
     code = int(re.search(r'versionCode\s*=\s*(\d+)', config)[1])
-    apk = (args.apk or ROOT / "app/build/outputs/apk/debug/app-debug.apk").resolve()
+    apk = (args.apk or ROOT / "android/app/build/outputs/apk/debug/app-debug.apk").resolve()
     sdk = Path(os.environ.get("ANDROID_HOME") or os.environ.get("ANDROID_SDK_ROOT") or "")
     build_tools = sdk / "build-tools" / "36.0.0"
     if not all((build_tools / tool).is_file() for tool in ("aapt", "apksigner")):
@@ -62,8 +62,8 @@ def main():
         raise SystemExit("APK metadata does not match Gradle. Rebuild before packaging.")
     if args.require_release and "application-debuggable" in metadata:
         raise SystemExit("Published APK must not be debuggable.")
-    build_inputs = list((ROOT / "app/src/main").rglob("*")) + [
-        ROOT / p for p in ("app/build.gradle.kts", "build.gradle.kts", "settings.gradle.kts", "gradle.properties")
+    build_inputs = list((ROOT / "android/app/src/main").rglob("*")) + list((ROOT / "shared/src/commonMain").rglob("*")) + [
+        ROOT / p for p in ("android/app/build.gradle.kts", "build.gradle.kts", "settings.gradle.kts", "gradle.properties", "shared/build.gradle.kts")
     ]
     if any(p.is_file() and p.stat().st_mtime_ns > apk.stat().st_mtime_ns for p in build_inputs):
         raise SystemExit("Production source changed after the APK was built. Rebuild before packaging.")
@@ -113,9 +113,9 @@ def main():
     with zipfile.ZipFile(source_output, "w", zipfile.ZIP_DEFLATED) as archive:
         for name in sorted(set(files)):
             path = ROOT / name
-            allowed = name.startswith(("app/src/", "app/schemas/", "docs/", "scripts/", "gradle/", ".github/workflows/")) or name in {
+            allowed = name.startswith(("shared/", "ios/", "android/app/src/", "android/app/schemas/", "docs/", "scripts/", "gradle/", ".github/workflows/")) or name in {
                 "AGENTS.md", "README.md", "LICENSE", "CHANGELOG.md", "VALIDATION.md", "TODO.md", ".gitignore",
-                "app/build.gradle.kts", "build.gradle.kts", "settings.gradle.kts", "gradle.properties", "gradlew", "gradlew.bat",
+                "android/app/build.gradle.kts", "build.gradle.kts", "settings.gradle.kts", "gradle.properties", "gradlew", "gradlew.bat",
             }
             if name and allowed and path.is_file():
                 archive.write(path, "dotnote/" + name)

@@ -14,7 +14,7 @@ Use a full JDK 17 and an Android SDK with platform 36 plus compatible build tool
 | KSP | 2.2.21-2.0.4 |
 | Java/Kotlin bytecode | 17 |
 | Package / namespace | `dev.dotnote.app` |
-| App version | Read `versionCode` / `versionName` in `app/build.gradle.kts`; current release documented in CHANGELOG.md |
+| App version | Read `versionCode` / `versionName` in `android/app/build.gradle.kts`; current release documented in CHANGELOG.md |
 | Android support | minimum API 29 (Android 10), compile/target API 36 (Android 16) |
 | Compose BOM | 2025.12.00 |
 | Activity Compose | 1.12.1 |
@@ -26,9 +26,13 @@ Use a full JDK 17 and an Android SDK with platform 36 plus compatible build tool
 | JUnit / JVM org.json | 4.13.2 / 20250517 |
 | Android test ext JUnit / runner | 1.3.0 / 1.7.0 |
 
-Version sources: [root build](../build.gradle.kts), [app build](../app/build.gradle.kts), [wrapper properties](../gradle/wrapper/gradle-wrapper.properties). Compose UI/Material versions come from the BOM. [Gradle properties](../gradle.properties) enables AndroidX, nontransitive R classes and a 3 GiB Gradle heap. Dependencies resolve through repositories in [settings](../settings.gradle.kts). Room schema export is configured into [`app/schemas/`](../app/schemas/).
+Version sources: [root build](../build.gradle.kts), [app build](../android/app/build.gradle.kts), [wrapper properties](../gradle/wrapper/gradle-wrapper.properties). Compose UI/Material versions come from the BOM. [Gradle properties](../gradle.properties) enables AndroidX, nontransitive R classes and a 3 GiB Gradle heap. Dependencies resolve through repositories in [settings](../settings.gradle.kts). Room schema export is configured into [`android/app/schemas/`](../android/app/schemas/).
 
 Android 16 is directly targeted and was used for emulator validation. The minSdk allows installation on newer Android releases, but that alone does not certify Android 17 or every OEM tablet. Do not change targetSdk merely to address an unmeasured stylus problem.
+
+## iPadOS and shared code
+
+See [the iPadOS guide](ipados-and-multiplatform.md). Both platform source trees ship in source archives. `shared:jvmTest` and iPad CI are release prerequisites; iPad signing/distribution is configured separately from the Android APK pipeline.
 
 ## Build and local installation
 
@@ -37,16 +41,16 @@ From the repository root:
 ```sh
 ./gradlew :app:assembleDebug :app:testDebugUnitTest :app:lintDebug
 ./gradlew :app:assembleDebugAndroidTest
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+adb install -r android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
 ```
 
 Outputs include:
 
-- `app/build/outputs/apk/debug/app-debug.apk`
-- `app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk`
-- `app/build/test-results/testDebugUnitTest/` and `app/build/reports/tests/testDebugUnitTest/`
-- `app/build/reports/lint-results-debug.html` / XML
+- `android/app/build/outputs/apk/debug/app-debug.apk`
+- `android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk`
+- `android/app/build/test-results/testDebugUnitTest/` and `android/app/build/reports/tests/testDebugUnitTest/`
+- `android/app/build/reports/lint-results-debug.html` / XML
 
 Use `adb devices` to confirm the intended target; pass `-s <serial>` when more than one device is attached. Installing instrumentation tests does not run them. Never uninstall/clear production app data just to solve a build or signing mismatch; that deletes local vaults. Export first if a destructive device reset is actually necessary.
 
@@ -54,7 +58,7 @@ Local snapshots remain debug-signed personal-test builds. An explicitly signed n
 
 ## Test inventory: 46 JVM tests
 
-Tests are in [`app/src/test/java/dev/dotnote/app/`](../app/src/test/java/dev/dotnote/app/).
+Tests are in [`android/app/src/test/java/dev/dotnote/app/`](../android/app/src/test/java/dev/dotnote/app/).
 
 | Class | Count | Contracts |
 | --- | --- | --- |
@@ -73,7 +77,7 @@ These are ordinary JUnit tests with a JVM `org.json` dependency. Native Android 
 
 ## Test inventory: 69 Android tests
 
-Tests are in [`app/src/androidTest/java/dev/dotnote/app/`](../app/src/androidTest/java/dev/dotnote/app/).
+Tests are in [`android/app/src/androidTest/java/dev/dotnote/app/`](../android/app/src/androidTest/java/dev/dotnote/app/).
 
 | Class | Count | Test methods and coverage |
 | --- | --- | --- |
@@ -166,7 +170,7 @@ After completing a deliverable app build, the work is not complete until **Relea
 
 ## Versioning and source control
 
-`app/build.gradle.kts` is the only authority for `versionName` and `versionCode`. BuildConfig supplies the in-app version. **Versions advance with releases; consistency means every current artifact and reference agrees, not that the number stays fixed.** Use major/minor/patch semantics: incompatible changes advance major, new feature releases advance minor, and compatible bug fixes advance patch. During 0.x development, document any breaking changes explicitly. Increment Android versionCode monotonically for every delivered update, independently of the display version.
+`android/app/build.gradle.kts` is the only authority for `versionName` and `versionCode`. BuildConfig supplies the in-app version. **Versions advance with releases; consistency means every current artifact and reference agrees, not that the number stays fixed.** Use major/minor/patch semantics: incompatible changes advance major, new feature releases advance minor, and compatible bug fixes advance patch. During 0.x development, document any breaking changes explicitly. Increment Android versionCode monotonically for every delivered update, independently of the display version.
 
 The import feature baseline is **0.8.0**; these import fixes are **0.8.1 / code 13**. Its initial 0.8.0 delivery mistakenly retained 0.7.1/code 11 metadata; CHANGELOG and the historical validation record disclose that mistake. Code 12 is reserved for the 0.8.0 baseline. Do not rewrite old APKs, checksums or evidence to disguise the mismatch.
 
@@ -180,10 +184,10 @@ Never just rename a stale APK, reuse a version for changed delivered binaries, o
 
 ## Packaging and signing
 
-Keep application ID stable. Increment version code/name deliberately in `app/build.gradle.kts`; record verification honestly in `VALIDATION.md`. Before handing out an update, inspect APK metadata and signing certificate with the SDK's `apkanalyzer`/`apksigner`. Example with build-tools on PATH:
+Keep application ID stable. Increment version code/name deliberately in `android/app/build.gradle.kts`; record verification honestly in `VALIDATION.md`. Before handing out an update, inspect APK metadata and signing certificate with the SDK's `apkanalyzer`/`apksigner`. Example with build-tools on PATH:
 
 ```sh
-apksigner verify --verbose --print-certs app/build/outputs/apk/debug/app-debug.apk
+apksigner verify --verbose --print-certs android/app/build/outputs/apk/debug/app-debug.apk
 ```
 
 An update requires the same signing certificate as the installed app. A freshly generated debug key on another machine is not equivalent. The 0.4.0 release record confirmed its certificate matched earlier 0.2.0 builds; preserve that key privately if distributing compatible personal updates. Never commit a private signing key.

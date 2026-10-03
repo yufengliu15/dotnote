@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.14.0
+
+- Organize the repository into `android/`, `ios/`, and `shared/` with a Kotlin Multiplatform document engine, codec, geometry, spatial index, resource cache, history and editor operations.
+- Add a native iPadOS app for local handwriting, pressure, shapes, typed text, selection, PDF/image import and portable vault import/export. See the iPadOS guide for initial platform differences and device-signing setup.
+- Preserve existing Android notes and opaque AndroidX Ink data. Both apps render portable pressure polylines created on iPad; update Android before exchanging those new strokes.
+- Gate Android releases on shared Kotlin and iPad simulator checks, retain existing Android regression gates, and package both platform source trees.
+
 ## 0.13.0 — 2026-10-02
 
 - Rendering overhaul for dense notes: finished ink and highlights are drawn once into 512 px tiles on a background thread, and frames only composite tiles, so pan, zoom, pen-up, eraser and selection costs no longer grow with the number of visible strokes. Edits repaint only the changed pixels of affected tiles; a moved selection is translated as one cached image; a whole-note overview fills areas revealed while zooming out; the paper and dots are one cached image; marker tiles are stored pre-faded, so no translucent layer is needed while idle. Stroke meshes for a tile are built on several cores.

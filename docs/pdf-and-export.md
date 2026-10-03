@@ -1,6 +1,6 @@
 # PDFs and document export
 
-[Documentation index](README.md) · Sources: [Rendering.kt](../app/src/main/java/dev/dotnote/app/Rendering.kt), [NotebookView.kt](../app/src/main/java/dev/dotnote/app/NotebookView.kt), [AppState.kt](../app/src/main/java/dev/dotnote/app/AppState.kt)
+[Documentation index](README.md) · Sources: [Rendering.kt](../android/app/src/main/java/dev/dotnote/app/Rendering.kt), [NotebookView.kt](../android/app/src/main/java/dev/dotnote/app/NotebookView.kt), [AppState.kt](../android/app/src/main/java/dev/dotnote/app/AppState.kt)
 
 ## Import
 

@@ -5,7 +5,7 @@
 <h1 align="center">Dotnote</h1>
 
 <p align="center">
-  A handwriting notebook for Android tablets.<br>
+  A handwriting notebook for Android tablets, with a native iPadOS port.<br>
   Offline. No account. Free and open source, forever.
 </p>
 
@@ -22,6 +22,12 @@
 Dotnote is an infinite dot-grid canvas, a pen, and a toolbar. You open it and write.
 
 There is no sign-up, no subscription, no ads and no analytics. Notes are plain files on your device in a format you can read. Backups go to a GitHub repository you own.
+
+## Platforms
+
+Android is the full-featured app. The native iPad app shares its document engine through Kotlin Multiplatform and supports local handwriting, shapes, text, PDFs, images and portable vaults. See the [iPad build guide and feature boundary](docs/ipados-and-multiplatform.md) for setup and remaining platform differences.
+
+The monorepo keeps platform apps in `android/` and `ios/`, with reusable Kotlin in `shared/`.
 
 ## Features
 

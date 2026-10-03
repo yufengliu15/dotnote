@@ -4,7 +4,7 @@
 
 ## Runtime structure
 
-The app has one Gradle application module, one exported launcher activity plus a separate exported system-note activity, activity-scoped `AndroidViewModel`, and no custom application class or dependency-injection framework. Production Kotlin is in package `dev.dotnote.app`.
+The monorepo has one Android Gradle application module (`android/app`, task path `:app`), a Kotlin Multiplatform `shared` module, and a native iPad app in `ios` (see [iPadOS architecture](ipados-and-multiplatform.md)). The Android app has one exported launcher activity plus a separate exported system-note activity, activity-scoped `AndroidViewModel`, and no custom application class or dependency-injection framework. Production Kotlin is in package `dev.dotnote.app`.
 
 ```mermaid
 flowchart TD
@@ -35,34 +35,34 @@ All paths below are relative to this documentation directory. The table covers e
 
 | File | Responsibility and principal types |
 | --- | --- |
-| [MainActivity.kt](../app/src/main/java/dev/dotnote/app/MainActivity.kt) | Activity intents and immersive navigation bar; Compose theme, library, editor, toolbar, folder operations, writing settings, Android file-picker launchers |
-| [CreateNoteActivity.kt](../app/src/main/java/dev/dotnote/app/CreateNoteActivity.kt) | Exported Android notes entry point; fresh private quick-note editor, lock-screen launches, independent tasks and configuration restoration |
-| [DefaultNotes.kt](../app/src/main/java/dev/dotnote/app/DefaultNotes.kt) | Notes-role availability/current-holder checks and public default-app settings entry |
-| [AppUpdates.kt](../app/src/main/java/dev/dotnote/app/AppUpdates.kt) / [UpdateDialog.kt](../app/src/main/java/dev/dotnote/app/UpdateDialog.kt) | Manual GitHub release checks, bounded downloads, APK verification and user-confirmed installer handoff |
-| [AppState.kt](../app/src/main/java/dev/dotnote/app/AppState.kt) | `AppState`; selected store, editor state, save queue, action mutex, settings persistence, vault switching, PDF/backup UI actions |
-| [Document.kt](../app/src/main/java/dev/dotnote/app/Document.kt) | Immutable scene and geometry: `Pt`, `Bounds`, `Transform`, `Camera`, `Item`, `Document`, `Tool`, `History`, `DocumentCodec`, hit tests, folder-cycle validation |
-| [NotebookView.kt](../app/src/main/java/dev/dotnote/app/NotebookView.kt) | Custom `FrameLayout`; native live ink, completed scene, pointer ownership, pan/zoom, selection/eraser/shapes, PDF worker and bitmap cache |
-| [SceneTiles.kt](../app/src/main/java/dev/dotnote/app/SceneTiles.kt) | Raster tile cache for finished ink and markers: background tile thread, incremental edits, zoom levels, vector gap fallback |
-| [FastJson.kt](../app/src/main/java/dev/dotnote/app/FastJson.kt) | Streaming JSON reader for notes and org.json-compatible text writer |
-| [Rendering.kt](../app/src/main/java/dev/dotnote/app/Rendering.kt) | Brush families, input serialization, `ObjectRenderer`, `PdfPageSource`, `PdfFiles.import/export`, Android matrix conversions |
-| [FillTool.kt](../app/src/main/java/dev/dotnote/app/FillTool.kt) | Bounded visible-scene bucket rasterization, enclosed-region flood fill, portable vector coverage |
-| [LibraryDrag.kt](../app/src/main/java/dev/dotnote/app/LibraryDrag.kt) | Long-press drag ownership, root-coordinate hit targets and lifted preview |
-| [TextTool.kt](../app/src/main/java/dev/dotnote/app/TextTool.kt) | Note-scoped text drafts/dialog, StaticLayout measurement and text item construction |
-| [ColorPicker.kt](../app/src/main/java/dev/dotnote/app/ColorPicker.kt) | Shared hue/saturation wheel, brightness slider, hex input, opaque selected color |
-| [Store.kt](../app/src/main/java/dev/dotnote/app/Store.kt) | Room entities/DAO/database and transactional chunked document reads; `Store` initialization, old database migration, file-to-index rebuild, legacy ZIP backup/restore |
-| [FileLibraryDao.kt](../app/src/main/java/dev/dotnote/app/FileLibraryDao.kt) | `LibraryDao` wrapper: files first, index second; mutation locking, no-op suppression, recency metadata updates |
-| [VaultFiles.kt](../app/src/main/java/dev/dotnote/app/VaultFiles.kt) | Path validation, atomic text, digest functions, JSON files, journal replay, directory layout, note/folder moves, snapshot |
-| [VaultCatalog.kt](../app/src/main/java/dev/dotnote/app/VaultCatalog.kt) | `VaultInfo`, vault creation/list/selection/rename/publish; local backup configuration, dirty revisions, `VaultLocks`, delay calculation |
-| [VaultTransfer.kt](../app/src/main/java/dev/dotnote/app/VaultTransfer.kt) | Storage Access Framework tree import/export using private staging directories |
-| [VaultDocumentsProvider.kt](../app/src/main/java/dev/dotnote/app/VaultDocumentsProvider.kt) | Read-only Android Files integration, canonical-path containment, metadata queries |
-| [GitHub.kt](../app/src/main/java/dev/dotnote/app/GitHub.kt) | Encrypted credentials, authentication token refresh, HTTP transport, repository listing, Git blobs/trees, verified downloads |
-| [GitBackup.kt](../app/src/main/java/dev/dotnote/app/GitBackup.kt) | Work scheduling/worker, managed path rules, connect/disconnect, incremental commits, conflict checks, explicit restore |
-| [VaultUi.kt](../app/src/main/java/dev/dotnote/app/VaultUi.kt) | Vault chooser/rename, GitHub authorization dialog, repository picker, backup controls and status |
-| [NewNoteDialog.kt](../app/src/main/java/dev/dotnote/app/NewNoteDialog.kt) | Shared creation dialog, vault selection and nested-folder browsing |
-| [RecentNotes.kt](../app/src/main/java/dev/dotnote/app/RecentNotes.kt) | Local most-recently-opened list, full folder labels, metadata refresh without changing recency |
-| [NoteWidgets.kt](../app/src/main/java/dev/dotnote/app/NoteWidgets.kt) | Two widget providers, responsive RemoteViews, PendingIntents, widget action parser, serialized widget updates |
+| [MainActivity.kt](../android/app/src/main/java/dev/dotnote/app/MainActivity.kt) | Activity intents and immersive navigation bar; Compose theme, library, editor, toolbar, folder operations, writing settings, Android file-picker launchers |
+| [CreateNoteActivity.kt](../android/app/src/main/java/dev/dotnote/app/CreateNoteActivity.kt) | Exported Android notes entry point; fresh private quick-note editor, lock-screen launches, independent tasks and configuration restoration |
+| [DefaultNotes.kt](../android/app/src/main/java/dev/dotnote/app/DefaultNotes.kt) | Notes-role availability/current-holder checks and public default-app settings entry |
+| [AppUpdates.kt](../android/app/src/main/java/dev/dotnote/app/AppUpdates.kt) / [UpdateDialog.kt](../android/app/src/main/java/dev/dotnote/app/UpdateDialog.kt) | Manual GitHub release checks, bounded downloads, APK verification and user-confirmed installer handoff |
+| [AppState.kt](../android/app/src/main/java/dev/dotnote/app/AppState.kt) | `AppState`; selected store, editor state, save queue, action mutex, settings persistence, vault switching, PDF/backup UI actions |
+| [Document.kt](../shared/src/commonMain/kotlin/dev/dotnote/app/Document.kt) | Immutable scene and geometry: `Pt`, `Bounds`, `Transform`, `Camera`, `Item`, `Document`, `Tool`, `History`, `DocumentCodec`, hit tests, folder-cycle validation |
+| [NotebookView.kt](../android/app/src/main/java/dev/dotnote/app/NotebookView.kt) | Custom `FrameLayout`; native live ink, completed scene, pointer ownership, pan/zoom, selection/eraser/shapes, PDF worker and bitmap cache |
+| [SceneTiles.kt](../android/app/src/main/java/dev/dotnote/app/SceneTiles.kt) | Raster tile cache for finished ink and markers: background tile thread, incremental edits, zoom levels, vector gap fallback |
+| [FastJson.kt](../shared/src/commonMain/kotlin/dev/dotnote/app/FastJson.kt) | Streaming JSON reader for notes and org.json-compatible text writer |
+| [Rendering.kt](../android/app/src/main/java/dev/dotnote/app/Rendering.kt) | Brush families, input serialization, `ObjectRenderer`, `PdfPageSource`, `PdfFiles.import/export`, Android matrix conversions |
+| [FillTool.kt](../android/app/src/main/java/dev/dotnote/app/FillTool.kt) | Bounded visible-scene bucket rasterization, enclosed-region flood fill, portable vector coverage |
+| [LibraryDrag.kt](../android/app/src/main/java/dev/dotnote/app/LibraryDrag.kt) | Long-press drag ownership, root-coordinate hit targets and lifted preview |
+| [TextTool.kt](../android/app/src/main/java/dev/dotnote/app/TextTool.kt) | Note-scoped text drafts/dialog, StaticLayout measurement and text item construction |
+| [ColorPicker.kt](../android/app/src/main/java/dev/dotnote/app/ColorPicker.kt) | Shared hue/saturation wheel, brightness slider, hex input, opaque selected color |
+| [Store.kt](../android/app/src/main/java/dev/dotnote/app/Store.kt) | Room entities/DAO/database and transactional chunked document reads; `Store` initialization, old database migration, file-to-index rebuild, legacy ZIP backup/restore |
+| [FileLibraryDao.kt](../android/app/src/main/java/dev/dotnote/app/FileLibraryDao.kt) | `LibraryDao` wrapper: files first, index second; mutation locking, no-op suppression, recency metadata updates |
+| [VaultFiles.kt](../android/app/src/main/java/dev/dotnote/app/VaultFiles.kt) | Path validation, atomic text, digest functions, JSON files, journal replay, directory layout, note/folder moves, snapshot |
+| [VaultCatalog.kt](../android/app/src/main/java/dev/dotnote/app/VaultCatalog.kt) | `VaultInfo`, vault creation/list/selection/rename/publish; local backup configuration, dirty revisions, `VaultLocks`, delay calculation |
+| [VaultTransfer.kt](../android/app/src/main/java/dev/dotnote/app/VaultTransfer.kt) | Storage Access Framework tree import/export using private staging directories |
+| [VaultDocumentsProvider.kt](../android/app/src/main/java/dev/dotnote/app/VaultDocumentsProvider.kt) | Read-only Android Files integration, canonical-path containment, metadata queries |
+| [GitHub.kt](../android/app/src/main/java/dev/dotnote/app/GitHub.kt) | Encrypted credentials, authentication token refresh, HTTP transport, repository listing, Git blobs/trees, verified downloads |
+| [GitBackup.kt](../android/app/src/main/java/dev/dotnote/app/GitBackup.kt) | Work scheduling/worker, managed path rules, connect/disconnect, incremental commits, conflict checks, explicit restore |
+| [VaultUi.kt](../android/app/src/main/java/dev/dotnote/app/VaultUi.kt) | Vault chooser/rename, GitHub authorization dialog, repository picker, backup controls and status |
+| [NewNoteDialog.kt](../android/app/src/main/java/dev/dotnote/app/NewNoteDialog.kt) | Shared creation dialog, vault selection and nested-folder browsing |
+| [RecentNotes.kt](../android/app/src/main/java/dev/dotnote/app/RecentNotes.kt) | Local most-recently-opened list, full folder labels, metadata refresh without changing recency |
+| [NoteWidgets.kt](../android/app/src/main/java/dev/dotnote/app/NoteWidgets.kt) | Two widget providers, responsive RemoteViews, PendingIntents, widget action parser, serialized widget updates |
 
-Resources are ordinary Android XML. [The manifest](../app/src/main/AndroidManifest.xml) registers the activity, two widget receivers and documents provider, plus internet/network-state permissions. [Data extraction rules](../app/src/main/res/xml/data_extraction_rules.xml) exclude app data from Android backup/transfer. `res/layout/widget_*.xml`, `res/xml/widget_*_info.xml`, `res/values/widget_strings.xml`, and `res/drawable/widget_*.xml` define widgets. The Compose UI is not built from XML layouts.
+Resources are ordinary Android XML. [The manifest](../android/app/src/main/AndroidManifest.xml) registers the activity, two widget receivers and documents provider, plus internet/network-state permissions. [Data extraction rules](../android/app/src/main/res/xml/data_extraction_rules.xml) exclude app data from Android backup/transfer. `res/layout/widget_*.xml`, `res/xml/widget_*_info.xml`, `res/values/widget_strings.xml`, and `res/drawable/widget_*.xml` define widgets. The Compose UI is not built from XML layouts.
 
 ## Startup and navigation
 

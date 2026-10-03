@@ -17,3 +17,6 @@ dependencyResolutionManagement {
 rootProject.name = "Dotnote"
 
 include(":app")
+
+project(":app").projectDir = file("android/app")
+include(":shared")

@@ -18,7 +18,10 @@ concurrency:
   group: dotnote-release
   cancel-in-progress: false
 jobs:
+  ipad:
+    uses: ./.github/workflows/ios.yml
   release:
+    needs: ipad
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -57,7 +60,7 @@ jobs:
           DOTNOTE_KEY_PASSWORD: ${{ secrets.DOTNOTE_KEY_PASSWORD }}
         run: |
           python3 -m unittest discover -s scripts -p 'test_*.py'
-          ./gradlew :app:testDebugUnitTest :app:lintRelease :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest
+          ./gradlew :shared:jvmTest :app:testDebugUnitTest :app:lintRelease :app:assembleRelease :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Enable emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -71,11 +74,11 @@ jobs:
           profile: pixel_tablet
           script: |
             adb shell setprop debug.hwui.renderer skiagl
-            adb install -r app/build/outputs/apk/debug/app-debug.apk
-            adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb install -r android/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r android/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             python3 scripts/android-release-tests.py
       - name: Package verified release
-        run: python3 scripts/package-release.py --require-release --apk app/build/outputs/apk/release/app-release.apk --output-dir "$RUNNER_TEMP/dotnote-release"
+        run: python3 scripts/package-release.py --require-release --apk android/app/build/outputs/apk/release/app-release.apk --output-dir "$RUNNER_TEMP/dotnote-release"
       - name: Retain validation evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
@@ -83,8 +86,8 @@ jobs:
           name: release-evidence
           retention-days: 7
           path: |
-            app/build/reports/
-            app/build/test-results/
+            android/app/build/reports/
+            android/app/build/test-results/
             /tmp/dotnote-instrumentation-*.log
             ${{ runner.temp }}/dotnote-release/
       - name: Publish release

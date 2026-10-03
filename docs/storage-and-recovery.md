@@ -4,7 +4,7 @@
 
 ## Authority and normal writes
 
-The vault directory is the source of truth. [`Store`](../app/src/main/java/dev/dotnote/app/Store.kt) maintains a Room index for reactive lists and document queries. Its `dao` is a [`FileLibraryDao`](../app/src/main/java/dev/dotnote/app/FileLibraryDao.kt) wrapper, not the raw database DAO.
+The vault directory is the source of truth. [`Store`](../android/app/src/main/java/dev/dotnote/app/Store.kt) maintains a Room index for reactive lists and document queries. Its `dao` is a [`FileLibraryDao`](../android/app/src/main/java/dev/dotnote/app/FileLibraryDao.kt) wrapper, not the raw database DAO.
 
 Room schema 2 (with non-destructive 1→2 migration) contains `folders(id PRIMARY KEY, parentId?, name)` and `notes(id PRIMARY KEY, folderId?, title, modified, document, isTemplate DEFAULT 0)`, with an index on `notes.folderId`. There are no SQL foreign-key constraints; application validation protects folder relationships. Folder flow sorts names case-insensitively. Note-summary flow selects metadata only and sorts by modification time descending.
 
@@ -36,7 +36,7 @@ The file operation precedes the index mutation. They are not a single distribute
 
 ## File transaction journal
 
-[`VaultFiles`](../app/src/main/java/dev/dotnote/app/VaultFiles.kt) uses `AtomicFile` for text writes and `.dotnote/transaction.json` for multi-file operations:
+[`VaultFiles`](../android/app/src/main/java/dev/dotnote/app/VaultFiles.kt) uses `AtomicFile` for text writes and `.dotnote/transaction.json` for multi-file operations:
 
 ```json
 {
@@ -109,7 +109,7 @@ Copying files one by one directly through the documents provider has no whole-va
 
 ### Storage Access Framework folder import/export
 
-[`VaultTransfer`](../app/src/main/java/dev/dotnote/app/VaultTransfer.kt) uses user-selected tree URIs. It does not keep a continuously linked external working directory or retain a sync relationship.
+[`VaultTransfer`](../android/app/src/main/java/dev/dotnote/app/VaultTransfer.kt) uses user-selected tree URIs. It does not keep a continuously linked external working directory or retain a sync relationship.
 
 Import recursively streams allowed files to `files/vaults/.import-<uuid>`. It rejects unsafe names/paths and unexpected files, skips local trash and selected nonportable/root housekeeping files, then calls `VaultCatalog.publish()`. Publish validates with `VaultFiles.read()` and renames staging to a fresh local ID on the same filesystem. The source remains untouched. The selected vault changes only through the subsequent AppState action.
 
@@ -119,7 +119,7 @@ Import recognizes managed paths and allows/skips root `README.md`, `LICENSE`, `.
 
 ### Android Files integration
 
-[`VaultDocumentsProvider`](../app/src/main/java/dev/dotnote/app/VaultDocumentsProvider.kt) exposes authority `dev.dotnote.app.vaults`, root title “Dotnote vaults,” and read-only file descriptors. The manifest uses `MANAGE_DOCUMENTS` with URI grants; the app does not request broad storage permission. Modes other than `r` are rejected. There is no create/edit/delete API.
+[`VaultDocumentsProvider`](../android/app/src/main/java/dev/dotnote/app/VaultDocumentsProvider.kt) exposes authority `dev.dotnote.app.vaults`, root title “Dotnote vaults,” and read-only file descriptors. The manifest uses `MANAGE_DOCUMENTS` with URI grants; the app does not request broad storage permission. Modes other than `r` are rejected. There is no create/edit/delete API.
 
 Document IDs are root-relative paths; `root` denotes the vault collection. Every resolution checks relative syntax, existence and canonical containment. Top-level vault folders display their manifest names. Child listings hide `transaction.json`, `migrated`, `trash`, `.bak` and `.new` files. Listing filters are UI behavior, not a claim that hidden files cannot ever be addressed through a granted document ID.
 
