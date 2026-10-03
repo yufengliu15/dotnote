@@ -67,9 +67,8 @@ def main():
     ]
     if any(p.is_file() and p.stat().st_mtime_ns > apk.stat().st_mtime_ns for p in build_inputs):
         raise SystemExit("Production source changed after the APK was built. Rebuild before packaging.")
-    readme = (ROOT / "README.md").read_text()
-    if f"Install `dist/dotnote-{version}.apk`" not in readme:
-        raise SystemExit("README install link does not match the current version.")
+    if re.search(r"^#+ .*\d+\.\d+\.\d+", (ROOT / "README.md").read_text(), re.M):
+        raise SystemExit("README.md must stay version-free; put release notes in CHANGELOG.md.")
     if re.search(r"^## (\d+\.\d+\.\d+)", (ROOT / "CHANGELOG.md").read_text(), re.M)[1] != version:
         raise SystemExit("The first CHANGELOG entry must match the current version.")
     if not (ROOT / "VALIDATION.md").read_text().startswith(f"# {version} "):
@@ -115,7 +114,7 @@ def main():
         for name in sorted(set(files)):
             path = ROOT / name
             allowed = name.startswith(("app/src/", "app/schemas/", "docs/", "scripts/", "gradle/", ".github/workflows/")) or name in {
-                "AGENTS.md", "README.md", "CHANGELOG.md", "VALIDATION.md", "TODO.md", ".gitignore",
+                "AGENTS.md", "README.md", "LICENSE", "CHANGELOG.md", "VALIDATION.md", "TODO.md", ".gitignore",
                 "app/build.gradle.kts", "build.gradle.kts", "settings.gradle.kts", "gradle.properties", "gradlew", "gradlew.bat",
             }
             if name and allowed and path.is_file():
