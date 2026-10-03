@@ -1,3 +1,49 @@
+# 0.13.0 performance validation
+
+App version **0.13.0 / code 24**, October 2, 2026. Branch `perf/0.13.0-performance`, built on the 0.12.1 release commit `6b36f55` (0.12.1 changes take precedence where the two overlapped). This is a **development snapshot** until the Release Dotnote workflow builds it from `main`.
+
+Validated with the cached JDK / Android SDK 36 toolchain and a disposable **Android 11 x86_64 tablet emulator (2560×1600, 2 vCPUs) running without hardware acceleration (QEMU TCG)**. Everything runs 20–50× slower there than on a tablet; absolute times below are not tablet latencies. Each row compares the 0.12.1 APK and the 0.13.0 APK on the same emulator image, with the same `PerformanceBenchmarkTest` source compiled against each version. Physical-tablet timing has not been measured.
+
+- Debug and instrumentation assembly, all **46 JVM tests** and debug lint pass (**0 errors / 58 warnings**; the new warnings are `UseKtx` style suggestions).
+- Android tests, isolated class invocations on 0.13.0: TileRenderingTest (1), CodecCompatibilityTest (1), LargeNoteStorageTest (2), NotePreviewTest (3), QualityOfLifeTest (2), AppUpdateTest (2), NativePipelineTest (2), GesturePipelineTest (2), VectorPerformanceTest (2), FlingNavigationTest (3), VaultPipelineTest (4), VaultLifecycleTest (3), DocumentImportPipelineTest (5), GitHubSignInLifecycleTest (2), CalendarWidgetTest (2) pass. The four suites the release workflow runs (AppUpdate, NativePipeline, VaultPipeline, VaultLifecycle) pass.
+- On this emulator, **0.12.1 and 0.13.0 fail the same timing- and accessibility-bound tests the same way**: QualityOfLifeUiTest, EditorUpdateTest (1 of 3), HighlighterPerformanceTest (1 of 2, p95 ~176 ms in both versions against a 100 ms budget), StartupLoadingTest (1 of 2), TextTemplateTest (3 of 6), WidgetPipelineTest (1 of 4), NotesRoleTest (1 of 5) and InkStartupTest (first stroke 1.27 s on 0.12.1, 1.25–1.54 s on 0.13.0, against a 250 ms budget). These need the hardware-accelerated emulator used for 0.12.0 validation or a tablet.
+- An intermediate 0.13.0 build blocked the first stroke for 4–14 s because every finished empty or offscreen tile redrew the editor; that was fixed before the final run and is the reason redraws now happen only for visible, non-empty tiles.
+- `LargeNoteStorageTest` no longer reproduces the CursorWindow overflow: the index row holds metadata only, and the test now asserts that instead.
+
+## Benchmark results (median, 0.12.1 → 0.13.0)
+
+| Workload | 0.12.1 | 0.13.0 | Speed-up |
+|---|---:|---:|---:|
+| Open 1,200-stroke note (reopen) | 67.1 s | 9.0 s | 7.5× |
+| Open 3,000-stroke note (reopen) | 60.1 s (0/3 opened; 60 s timeout) | 9.4 s | 6.4× |
+| First read of 3,000-stroke note after launch | 26.8 s | 5.0 s | 5.4× |
+| First library preview of 3,000-stroke note | 109.9 s | 10.0 s | 11.0× |
+| First frame of freshly committed dense note | 12.7 s | 1.5 s | 8.7× |
+| Pan frame (software canvas) | 4.0 s | 107 ms | 37.1× |
+| Pan frame (hardware, FrameMetrics) | 4.3 s | 517 ms | 8.3× |
+| Pinch-zoom frame (software canvas) | 2.9 s | 780 ms | 3.7× |
+| Pinch-zoom frame (hardware, FrameMetrics) | 6.4 s | 835 ms | 7.7× |
+| Pen-up commit to drawn frame | 7.1 s | 416 ms | 17.1× |
+| Save after one stroke | 83.8 s | 4.2 s | 19.9× |
+| 10 strokes then save | 78.3 s | 4.0 s | 19.3× |
+| Eraser move frame | 4.9 s | 546 ms | 9.0× |
+| Lasso release | 8.6 s | 1.0 s | 8.3× |
+| Selection drag frame | 2.9 s | 658 ms | 4.5× |
+| Vault startup, cold (60 notes) | 83.4 s | 13.2 s | 6.3× |
+| Vault startup, warm | 83.0 s | 1.7 s | 47.5× |
+| GitHub backup, first (40 notes) | 42.6 s | 12.0 s | 3.6× |
+| GitHub backup, 3 changed | 36.3 s | 5.3 s | 6.9× |
+| GitHub backup, unchanged | 36.8 s | 3.6 s | 10.1× |
+| GitHub restore (40 notes) | 17.4 s | 5.4 s | 3.2× |
+
+"Reopen" closes and reopens the same note, which reuses its parsed scene and stroke meshes; "first read" and "first preview" start from a fresh store with nothing cached. Hardware rows are `FrameMetrics` totals from real frames (swiftshader GL, so still CPU-bound); software rows draw the editor's three layers into a bitmap. Runs on this emulator vary by roughly ±30% between boots; the 0.13.0 numbers are from the final build's single run after a fresh boot.
+
+Below 5× on this emulator: first full GitHub backup (3.6×) and restore (3.2×), where emulated-CPU JSON validation of every note and the fake server's own work dominate; software-canvas pinch zoom (3.7×), which is per-pixel bitmap scaling (hardware-rendered zoom is 7.7×); and selection drag (4.5×).
+
+Install over the existing app; do not uninstall or clear data. No file format change: notes written by 0.13.0 are byte-identical to org.json output (`CodecCompatibilityTest`), and older indexes are rebuilt metadata-only on first start.
+
+---
+
 # 0.12.1 GitHub Actions release validation
 
 App version **0.12.1 / code 23**, October 2, 2026. App behavior matches the locally verified 0.12.0 snapshot below; only app version metadata and delivery documentation changed. The new version preserves the identity of the already delivered 0.12.0/code 22 debug APK.
