@@ -477,6 +477,8 @@ class NotebookView(context: Context, val state: AppState) : FrameLayout(context)
         // would stall this frame for longer than the tiles take to arrive (for example the first
         // frames of a dense note just opened), so such areas wait for their tiles.
         if (!complete && hits.size > FALLBACK_LIMIT) return
+        // Marker outlines are built on the tile thread; a pending tile brings them shortly.
+        if (!complete && markers) return
         val matrix = screenMatrix()
         canvas.save()
         canvas.concat(matrix)
