@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.0 — 2026-10-06
+
+- The library home (vault root, no search) shows a Recent row with up to five notes of the active vault, most recently opened first. Recency stays device-local and is the same list the Recent notes widget uses; viewing a note still does not change its backup revision.
+- Notes with two or more PDF pages show a page scrubber in the editor's top-right corner. A slow drag moves one page per 40 dp; faster drags skip more pages, and a fast drag the height of the canvas spans the whole document. Tap its upper or lower half for the previous or next page. Jumps frame the page like the page navigator.
+- Added `PageScrubRulesTest` and `RecentHomeRulesTest`. No file format change. Android versionCode: 26.
+
 ## 0.14.0
 
 - Organize the repository into `android/`, `ios/`, and `shared/` with a Kotlin Multiplatform document engine, codec, geometry, spatial index, resource cache, history and editor operations.

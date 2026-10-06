@@ -24,6 +24,25 @@ fun folderPath(id: String?, folders: List<Folder>): String {
     return parts.joinToString(" / ").ifEmpty { "Vault root" }
 }
 
+const val HOME_RECENT_LIMIT = 5
+
+/** Notes of [vault] in device-local opening order, skipping entries whose note no longer exists. */
+fun recentNotesFor(
+    vault: String,
+    recents: List<RecentNote>,
+    notes: List<NoteSummary>,
+    limit: Int = HOME_RECENT_LIMIT,
+): List<NoteSummary> {
+    val byId = notes.associateBy { it.id }
+    return recents
+        .asSequence()
+        .filter { it.vaultId == vault }
+        .mapNotNull { byId[it.noteId] }
+        .distinctBy { it.id }
+        .take(limit)
+        .toList()
+}
+
 /** Device-local opening order; viewing a note must not change its backup revision. */
 class RecentNotes(context: Context) {
     private val app = context.applicationContext

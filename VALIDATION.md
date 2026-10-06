@@ -1,3 +1,12 @@
+# 0.15.0 recent notes and page scrubber validation
+
+App version **0.15.0 / code 26**, October 6, 2026. Built on the 0.14.0 release commit `f744c55`.
+
+- **Android:** 47 app JVM tests pass, including the new `PageScrubRulesTest` (5: slow one-page steps, full-height fast drag spans the document, monotonic speed gain, short-document floor, page ordering and nearest page) and `RecentHomeRulesTest` (1: five-note cap, active vault only, opening order, deleted/duplicate entries skipped). Shared Kotlin JVM tests pass. Debug lint passes with **0 errors / 60 warnings**.
+- Local checks used JDK 21 targeting Java 17, Kotlin 2.2.21, Gradle 8.13 and SDK 36. No emulator or physical-device run was performed locally; instrumentation and iPad gates are enforced by the Release Dotnote workflow. Scrubber feel (speed thresholds) needs tablet acceptance.
+
+---
+
 # 0.14.0 multiplatform validation
 
 App version **0.14.0 / code 25**, October 3, 2026. Android metadata remains authoritative in `android/app/build.gradle.kts`; iPad project metadata is checked against it by the release tests.

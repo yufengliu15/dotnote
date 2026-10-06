@@ -379,6 +379,10 @@ private fun Library(state: AppState) {
                     if (query.isBlank()) it.folderId == state.folderId
                     else it.title.contains(query, true)
                 }
+            val recentNotes =
+                remember(notes, state.store.vaultId, state.recentVersion) {
+                    recentNotesFor(state.store.vaultId, RecentNotes(state.getApplication<android.app.Application>()).list(), notes)
+                }
             LazyVerticalGrid(
                 columns = GridCells.Adaptive(220.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -386,6 +390,10 @@ private fun Library(state: AppState) {
                 contentPadding = PaddingValues(bottom = 24.dp),
                 modifier = Modifier.weight(1f),
             ) {
+                if (query.isBlank() && state.folderId == null && recentNotes.isNotEmpty())
+                    item(key = "recent", span = { GridItemSpan(maxLineSpan) }) {
+                        RecentNotesRow(state, recentNotes)
+                    }
                 if (visibleFolders.isNotEmpty()) {
                     item(span = { GridItemSpan(maxLineSpan) }) {
                         Text(
@@ -598,6 +606,46 @@ private fun Library(state: AppState) {
         ) {
             deleteNote = null
             state.runAction { state.store.dao.deleteNote(n.id) }
+        }
+    }
+}
+
+/** Up to [HOME_RECENT_LIMIT] most recently opened notes of the active vault, newest first. */
+@Composable
+private fun RecentNotesRow(state: AppState, recent: List<NoteSummary>) {
+    Column(Modifier.fillMaxWidth().semantics { contentDescription = "Recent notes" }) {
+        Text(
+            "RECENT",
+            fontSize = 11.sp,
+            letterSpacing = 1.5.sp,
+            color = Color(0xff6f776d),
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+        )
+        Row(
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            recent.forEach { note ->
+                Surface(
+                    onClick = { state.open(note.id) },
+                    modifier = Modifier.width(168.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = Color.White,
+                    border = BorderStroke(1.dp, Color(0xffe0e4da)),
+                ) {
+                    Column {
+                        NotePreview(state.store, note, Modifier.fillMaxWidth().height(84.dp))
+                        Text(
+                            note.title,
+                            Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -945,6 +993,7 @@ internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() ->
                     },
                 )
                 CanvasOverlays(state, { canvas }, { selectionColor = true })
+                PageScrubber(state) { canvas }
             }
             if (!quickNote && state.dock == "Right")
                 ToolStrip(
@@ -1068,7 +1117,7 @@ internal fun Editor(state: AppState, quickNote: Boolean = false, onClose: (() ->
             title = { Text("Make yourself at home") },
             text = {
                 Text(
-                    "Write with your stylus; drag or flick with one finger to pan, and pinch to zoom. Faster flicks coast farther; touch the canvas to stop. Enable finger drawing in settings if needed, use two fingers to pan while finger drawing is enabled.\n\nChoose Text and tap the canvas to type. Tap existing text with Text to edit it. Use Select to move, resize, recolor or delete text.\n\nIn Note options, choose Use as template. New note can start from any template in the selected vault; each copy is independent.\n\nSelect a shape and drag to draw it. The grid's rows and columns are adjustable.\n\nUse Select to circle objects or tap one. Drag the selection to move it; drag its bottom-right handle to resize.\n\nPDF pages stay locked underneath your writing. Use the page navigator to jump through a document.\n\nNotes save automatically. Back up your library from the home screen menu. Uninstalling removes local notes."
+                    "Write with your stylus; drag or flick with one finger to pan, and pinch to zoom. Faster flicks coast farther; touch the canvas to stop. Enable finger drawing in settings if needed, use two fingers to pan while finger drawing is enabled.\n\nChoose Text and tap the canvas to type. Tap existing text with Text to edit it. Use Select to move, resize, recolor or delete text.\n\nIn Note options, choose Use as template. New note can start from any template in the selected vault; each copy is independent.\n\nSelect a shape and drag to draw it. The grid's rows and columns are adjustable.\n\nUse Select to circle objects or tap one. Drag the selection to move it; drag its bottom-right handle to resize.\n\nPDF pages stay locked underneath your writing. Use the page navigator to jump through a document, or drag the page scrubber in the top-right corner: slowly for one page at a time, faster to skip ahead. Tap its top or bottom half for the previous or next page.\n\nNotes save automatically. Back up your library from the home screen menu. Uninstalling removes local notes."
                 )
             },
             confirmButton = { TextButton(onClick = { help = false }) { Text("Got it") } },

@@ -43,6 +43,10 @@ class AppState(application: Application) : AndroidViewModel(application) {
             .flatMapLatest { it.dao.notes() }
             .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
     private val actions = Mutex()
+    /** Bumped after the device-local recent-notes order changes so the library re-reads it. */
+    var recentVersion by mutableIntStateOf(0)
+        private set
+
     var newNoteRequested by mutableStateOf(false)
     var folderId by mutableStateOf<String?>(null)
     var note by mutableStateOf<Note?>(null)
@@ -176,6 +180,7 @@ class AppState(application: Application) : AndroidViewModel(application) {
                         }
                     }
                 }
+                withContext(Dispatchers.Main) { recentVersion++ }
             }
         }
         runAction {

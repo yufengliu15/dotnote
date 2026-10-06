@@ -32,6 +32,12 @@ A missing bitmap draws white paper and a loading label, enqueues at most one req
 
 Rendering constrains width to 64–2048 pixels and height to at most 4096. The source page is rasterized on white with display rendering mode. Very tall pages and extreme zoom are therefore bounded-resolution previews. PDF text is neither selectable nor indexed/searchable by Dotnote. There is no PDF text extraction or original object editing.
 
+## Page scrubber
+
+`PageScrubber` (in [PageScrubber.kt](../android/app/src/main/java/dev/dotnote/app/PageScrubber.kt)) appears at the editor canvas's top-right when a note has at least two locked PDF pages. Pages are ordered by top edge, then left edge. The label shows the page whose vertical center is nearest the viewport center.
+
+Dragging past touch slop settles ink and accumulates a fractional page position. Each move adds `dy × PageScrub.gain(speed)` pages, where speed comes from a Compose `VelocityTracker`: below 250 dp/s the gain is one page per 40 dp; at or above 1500 dp/s a drag the height of the canvas spans first to last page; speeds between blend linearly. Short documents never drop below the one-page-per-40-dp rate. Whenever the rounded position changes, the camera frames that page with the same fit as the page navigator. A tap without dragging moves one page back (upper half) or forward (lower half). Camera moves do not add undo history.
+
 ## PDF export
 
 The editor offers “Export entire note as PDF” and “Export visible area as PDF.” Both use `CreateDocument(application/pdf)`. Before export, AppState flushes the current note and captures the immutable document. Export uses its own renderer/source on IO, not the screen's cache.
