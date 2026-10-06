@@ -1210,7 +1210,7 @@ private fun ToolStrip(
                         onClick = {
                             beforeAction()
                             state.color = color
-                            state.tool = Tool.PEN
+                            state.tool = toolAfterColorPick(state.tool)
                             state.selection = emptySet()
                         },
                         onLongClick = {

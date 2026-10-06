@@ -146,6 +146,11 @@ class QualityOfLifeUiTest {
                 }
                 click("Color slot 2")
                 await { state.tool == Tool.PEN && state.color == state.palette[1] }
+                scenario.onActivity { state.tool = Tool.HIGHLIGHTER }
+                click("Color slot 3")
+                await { state.tool == Tool.HIGHLIGHTER && state.color == state.palette[2] }
+                click("Color slot 2")
+                await { state.tool == Tool.HIGHLIGHTER && state.color == state.palette[1] }
                 val color = state.color
                 click("Fill")
                 await { node("Pen fill") != null && node("Highlighter base") != null }

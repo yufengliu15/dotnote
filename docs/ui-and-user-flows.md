@@ -110,4 +110,4 @@ Do not add network/account requirements to ordinary note creation or editing. Wi
 
 See [default notes app integration](default-notes-app.md). Android CREATE_NOTE launches a separate quick editor rather than the library, using a fresh note in the current vault root. Close saves and finishes the system editor. Its bottom toolbar scrolls in narrow windows; the library, import/export and account menus are absent. Normal launcher/widget flows retain the existing folder-picker and library navigation.
 
-Fill opens horizontal Pen fill and Highlighter base choices and retains the selected colour. Tap a closed area fully visible on the canvas; finger drags pan. Tapping a palette colour returns to Pen. Edits save after three seconds of inactivity; leaving/backgrounding requests an immediate save.
+Fill opens horizontal Pen fill and Highlighter base choices and retains the selected colour. Tap a closed area fully visible on the canvas; finger drags pan. Tapping a palette colour keeps the current tool (`toolAfterColorPick`); only Eraser returns to Pen. Edits save after three seconds of inactivity; leaving/backgrounding requests an immediate save.

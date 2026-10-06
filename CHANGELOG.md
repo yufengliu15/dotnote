@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.16.2 — 2026-10-06
+
+- Tapping a palette colour keeps the current tool, so choosing a colour on the highlighter (or shapes, text, fill or select) no longer switches to Pen. Only the eraser still returns to Pen. This replaces the colour-to-Pen behaviour from 0.12.0.
+- Added `ColorPickRulesTest`. No file format change. Android versionCode: 29.
+
 ## 0.16.1 — 2026-10-06
 
 - The PDF page scrubber fades out after two seconds without panning, zooming or scrubbing and fades back in as soon as the view moves. It stays visible while you hold it, and drawing alone does not bring it back.

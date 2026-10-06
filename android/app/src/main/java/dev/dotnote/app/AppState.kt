@@ -21,6 +21,12 @@ val defaultPalette =
         it.toInt()
     }
 
+/**
+ * Tool after tapping a palette colour: only the eraser hands back to Pen. Pen, highlighter, shapes,
+ * text, fill and select keep the current tool so the colour applies to it.
+ */
+fun toolAfterColorPick(current: Tool): Tool = if (current == Tool.ERASER) Tool.PEN else current
+
 @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class, kotlinx.coroutines.FlowPreview::class)
 class AppState(application: Application) : AndroidViewModel(application) {
     private val preferences = application.getSharedPreferences("writing", 0)

@@ -1,3 +1,11 @@
+# 0.16.2 colour-pick tool validation
+
+App version **0.16.2 / code 29**, October 6, 2026. Built on the 0.16.1 commit.
+
+- **Android:** 50 app JVM tests pass, including `ColorPickRulesTest` (every tool keeps itself on a colour pick except Eraser, which returns to Pen). Shared Kotlin JVM tests, release-script tests and `git diff --check` pass. Debug lint passes with **0 errors**; debug and instrumentation APKs assemble. No emulator or device run locally.
+
+---
+
 # 0.16.1 scrubber auto-hide and Recent row validation
 
 App version **0.16.1 / code 28**, October 6, 2026. Built on the 0.16.0 commit.
