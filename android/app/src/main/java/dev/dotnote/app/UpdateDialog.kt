@@ -5,12 +5,21 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.unit.dp
 import java.io.File
 import kotlinx.coroutines.CancellationException
@@ -51,6 +60,7 @@ internal fun UpdateDialog(beforeInstall: suspend () -> Boolean, onDismiss: () ->
                 Text("Dotnote ${BuildConfig.VERSION_NAME} · Build ${BuildConfig.VERSION_CODE}")
                 Text(status)
                 if (busy) LinearProgressIndicator(Modifier.fillMaxWidth())
+                update?.let { WhatsNew(it.notes) }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = previews, enabled = !busy, onCheckedChange = {
                         previews = it
@@ -70,7 +80,7 @@ internal fun UpdateDialog(beforeInstall: suspend () -> Boolean, onDismiss: () ->
                     if (candidate == null) {
                         status = "Checking for updates…"
                         update = updater.check(previews)
-                        status = update?.let { "Dotnote ${it.version} is available." }
+                        status = update?.let { "Dotnote ${it.version} is available. Review what's new, then choose Download update or Close." }
                             ?: "No newer ${if (previews) "" else "stable "}release is available."
                     } else if (ready == null) {
                         status = "Downloading and verifying Dotnote ${candidate.version}…"
@@ -92,4 +102,35 @@ internal fun UpdateDialog(beforeInstall: suspend () -> Boolean, onDismiss: () ->
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(if (busy) "Cancel" else "Close") } },
     )
+}
+
+/** What changed between the installed build and the offered update, shown before anything downloads. */
+@Composable
+private fun WhatsNew(notes: List<ReleaseNotes>) {
+    Surface(
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0xfff3f5ef),
+        border = BorderStroke(1.dp, Color(0xffe0e4da)),
+        modifier = Modifier.fillMaxWidth().semantics { contentDescription = "What's new" },
+    ) {
+        Column(
+            Modifier.heightIn(max = 280.dp).verticalScroll(rememberScrollState()).padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text("What's new", fontWeight = FontWeight.SemiBold)
+            if (notes.isEmpty())
+                Text("No release notes were published for this update.", fontSize = 13.sp)
+            notes.forEach { release ->
+                if (notes.size > 1)
+                    Text(release.version, fontSize = 13.sp, fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(top = 4.dp))
+                release.items.forEach { item ->
+                    Row {
+                        Text("•", fontSize = 13.sp, modifier = Modifier.width(14.dp))
+                        Text(item, fontSize = 13.sp)
+                    }
+                }
+            }
+        }
+    }
 }

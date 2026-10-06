@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.16.0 — 2026-10-06
+
+- Version & updates now shows what's new before anything downloads. After Check for updates, the dialog lists the release notes of every release between the installed build and the offered one, newest first, so you can decide whether to tap Download update or Close. Notes come from the GitHub release text, which the release workflow already builds from this changelog.
+- Added a release-notes test to `UpdateRulesTest`. No file format change. Android versionCode: 27.
+
 ## 0.15.0 — 2026-10-06
 
 - The library home (vault root, no search) shows a Recent row with up to five notes of the active vault, most recently opened first. Recency stays device-local and is the same list the Recent notes widget uses; viewing a note still does not change its backup revision.

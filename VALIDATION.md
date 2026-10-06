@@ -1,3 +1,12 @@
+# 0.16.0 update release-notes validation
+
+App version **0.16.0 / code 27**, October 6, 2026. Built on the 0.15.0 commit `430206a`.
+
+- **Android:** 48 app JVM tests pass, including `UpdateRulesTest.releaseNotesCoverSkippedVersionsNewestFirst` (skipped versions included, newest first; drafts, too-new and hidden previews excluded; title/"Built from" trailer stripped; wrapped bullets joined; Markdown marks removed; per-release item cap). Shared Kotlin JVM tests, release-script tests and `git diff --check` pass. Debug lint passes with **0 errors**; debug and instrumentation APKs assemble.
+- Local checks used JDK 21 targeting Java 17, Kotlin 2.2.21, Gradle 8.13 and SDK 36. No emulator or device run locally; the dialog layout and a live GitHub check need device acceptance.
+
+---
+
 # 0.15.0 recent notes and page scrubber validation
 
 App version **0.15.0 / code 26**, October 6, 2026. Built on the 0.14.0 release commit `f744c55`.

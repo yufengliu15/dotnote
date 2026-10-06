@@ -74,4 +74,21 @@ class UpdateRulesTest {
         rejected { UpdateRules.validateIdentity(u, "dev.dotnote.app", 19, "0.11.0", setOf("b"), setOf(hash)) }
         rejected { UpdateRules.validateIdentity(u, "dev.dotnote.app", 19, "0.11.0", emptySet(), emptySet()) }
     }
+
+    @Test fun releaseNotesCoverSkippedVersionsNewestFirst() {
+        fun withBody(name: String, body: String, preview: Boolean = false) = release(name, preview).put("body", body)
+        val releases = JSONArray()
+            .put(withBody("0.14.0", "Dotnote 0.14.0 (Android build 25)\n\n- Old"))
+            .put(withBody("0.16.0", "Dotnote 0.16.0 (Android build 27)\r\n\r\n- Show `what's new`\n  before **installing**.\n- Second\n\nBuilt from abc. Install the APK as an update; keep your existing app data.\n"))
+            .put(withBody("0.15.0", "Dotnote 0.15.0 (Android build 26)\n\n- Recent row", preview = true))
+            .put(withBody("0.17.0", "- Too new"))
+            .put(release("0.15.5", draft = true).put("body", "- Draft"))
+        val all = UpdateRules.notes(releases, "0.14.0", "0.16.0", previews = true)
+        assertEquals(listOf("0.16.0", "0.15.0"), all.map { it.version })
+        assertEquals(listOf("Show what's new before installing.", "Second"), all[0].items)
+        assertEquals(listOf("Recent row"), all[1].items)
+        assertEquals(listOf("0.16.0"), UpdateRules.notes(releases, "0.14.0", "0.16.0", previews = false).map { it.version })
+        assertTrue(UpdateRules.noteItems("").isEmpty())
+        assertEquals(UpdateRules.MAX_NOTE_ITEMS, UpdateRules.noteItems((1..30).joinToString("\n") { "- item $it" }).size)
+    }
 }

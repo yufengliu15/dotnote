@@ -113,7 +113,7 @@ The format is versioned, and new versions of the app always open old notes. You 
 
 Download the APK from [Releases](https://github.com/yufengliu15/dotnote/releases/latest) and open it on your tablet. Android will ask you to allow installs from that source.
 
-After that, update from inside the app: **Version & updates → Check for updates**. Downloads are checked against the release signature before Android's installer opens. Install updates over the existing app. Do not uninstall first.
+After that, update from inside the app: **Version & updates → Check for updates**. You see what changed in the new version before deciding to download it. Downloads are checked against the release signature before Android's installer opens. Install updates over the existing app. Do not uninstall first.
 
 Requires Android 10 or newer. Built for tablets with a stylus. If your pen registers as a finger, turn on **Writing settings → Draw with a finger**.
 

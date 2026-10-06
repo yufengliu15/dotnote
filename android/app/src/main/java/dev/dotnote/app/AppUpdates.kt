@@ -24,7 +24,11 @@ internal data class AppUpdate(
     val url: String,
     val sha256: String,
     val certificate: String,
+    /** Release notes for every release between the installed build and this one, newest first. */
+    val notes: List<ReleaseNotes> = emptyList(),
 )
+
+internal data class ReleaseNotes(val version: String, val items: List<String>)
 
 internal object UpdateRules {
     const val REPOSITORY = "yufengliu15/dotnote"
@@ -54,6 +58,46 @@ internal object UpdateRules {
                 val bv = b.getString("tag_name").removePrefix("v")
                 when { av == bv -> 0; newer(av, bv) -> 1; else -> -1 }
             }
+
+    /**
+     * Notes for releases newer than [installed] up to and including [target], newest first, so a user
+     * skipping versions sees everything they would get. Visibility follows the same draft/preview rules
+     * as [release].
+     */
+    fun notes(releases: JSONArray, installed: String, target: String, previews: Boolean): List<ReleaseNotes> =
+        (0 until releases.length()).map { releases.getJSONObject(it) }
+            .filter { !it.optBoolean("draft") && (previews || !it.optBoolean("prerelease")) }
+            .mapNotNull { r ->
+                val v = r.optString("tag_name").removePrefix("v")
+                if (!versionPattern.matches(v) || !newer(v, installed) || newer(v, target)) null
+                else ReleaseNotes(v, noteItems(r.optString("body")))
+            }
+            .distinctBy { it.version }
+            .sortedWith { a, b -> if (a.version == b.version) 0 else if (newer(a.version, b.version)) -1 else 1 }
+            .take(MAX_NOTE_RELEASES)
+
+    const val MAX_NOTE_RELEASES = 12
+    const val MAX_NOTE_ITEMS = 12
+
+    /**
+     * Plain-text bullet items from a release body written by publish-release.py: the
+     * "Dotnote x (Android build n)" title and the "Built from" trailer are dropped, wrapped lines are
+     * joined to their bullet, and Markdown code/emphasis marks are removed.
+     */
+    fun noteItems(body: String): List<String> {
+        val items = mutableListOf<StringBuilder>()
+        for (raw in body.replace("\r", "").lines()) {
+            val line = raw.trim()
+            if (line.isEmpty() || line.startsWith("Dotnote ") && line.contains("(Android build")) continue
+            if (line.startsWith("Built from ")) break
+            if (line.startsWith("- ") || line.startsWith("* ")) items += StringBuilder(line.drop(2).trim())
+            else if (items.isNotEmpty()) items.last().append(' ').append(line)
+            else items += StringBuilder(line)
+        }
+        return items.map { it.toString().replace("`", "").replace("**", "").trim() }
+            .filter { it.isNotEmpty() }
+            .take(MAX_NOTE_ITEMS)
+    }
 
     fun asset(release: JSONObject, name: String): String {
         val assets = release.getJSONArray("assets")
@@ -149,6 +193,7 @@ internal class AppUpdates(private val context: Context) {
         val release = UpdateRules.release(releases, BuildConfig.VERSION_NAME, previews) ?: return@withContext null
         val version = release.getString("tag_name").removePrefix("v")
         UpdateRules.manifest(JSONObject(text(UpdateRules.asset(release, "release-$version.json"))), release, BuildConfig.VERSION_CODE.toLong())
+            .copy(notes = UpdateRules.notes(releases, BuildConfig.VERSION_NAME, version, previews))
     }
 
     suspend fun fetch(update: AppUpdate): File = withContext(Dispatchers.IO) {
