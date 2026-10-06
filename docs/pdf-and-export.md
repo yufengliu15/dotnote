@@ -34,7 +34,7 @@ Rendering constrains width to 64–2048 pixels and height to at most 4096. The s
 
 ## Page scrubber
 
-`PageScrubber` (in [PageScrubber.kt](../android/app/src/main/java/dev/dotnote/app/PageScrubber.kt)) appears at the editor canvas's top-right when a note has at least two locked PDF pages. Pages are ordered by top edge, then left edge. The label shows the page whose vertical center is nearest the viewport center.
+`PageScrubber` (in [PageScrubber.kt](../android/app/src/main/java/dev/dotnote/app/PageScrubber.kt)) appears at the editor canvas's top-right when a note has at least two locked PDF pages. Pages are ordered by top edge, then left edge. The label shows the page whose vertical center is nearest the viewport center. The scrubber fades in on any camera change (pan, zoom, fling, page jump, including opening the note) and fades out `PageScrub.HIDE_AFTER_MS` (2 s) after the last one; it stays while a finger is on it. The camera is observed with `snapshotFlow`, so panning does not recompose the overlay; edits that leave the camera unchanged do not show it. While hidden it receives no touches.
 
 Dragging past touch slop settles ink and accumulates a fractional page position. Each move adds `dy × PageScrub.gain(speed)` pages, where speed comes from a Compose `VelocityTracker`: below 250 dp/s the gain is one page per 40 dp; at or above 1500 dp/s a drag the height of the canvas spans first to last page; speeds between blend linearly. Short documents never drop below the one-page-per-40-dp rate. Whenever the rounded position changes, the camera frames that page with the same fit as the page navigator. A tap without dragging moves one page back (upper half) or forward (lower half). Camera moves do not add undo history.
 

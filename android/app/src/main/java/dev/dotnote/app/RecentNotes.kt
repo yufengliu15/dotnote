@@ -24,7 +24,14 @@ fun folderPath(id: String?, folders: List<Folder>): String {
     return parts.joinToString(" / ").ifEmpty { "Vault root" }
 }
 
-const val HOME_RECENT_LIMIT = 5
+/** Upper bound on recent notes considered for the home row; the row shows as many as fit. */
+const val HOME_RECENT_LIMIT = 24
+const val HOME_RECENT_CARD_DP = 168
+const val HOME_RECENT_GAP_DP = 12
+
+/** How many fixed-width recent cards fit on one row of [widthDp] without scrolling (at least one). */
+fun recentCardsPerRow(widthDp: Float): Int =
+    ((widthDp + HOME_RECENT_GAP_DP) / (HOME_RECENT_CARD_DP + HOME_RECENT_GAP_DP)).toInt().coerceAtLeast(1)
 
 /** Notes of [vault] in device-local opening order, skipping entries whose note no longer exists. */
 fun recentNotesFor(

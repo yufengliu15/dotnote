@@ -42,7 +42,7 @@ The monorepo keeps platform apps in `android/` and `ios/`, with reusable Kotlin 
 
 **Imports**
 
-- PDFs land on the canvas as locked pages with room around them to write. A page navigator jumps between them, and a small scrubber in the corner flips through pages: drag slowly for one page at a time, faster to skip ahead.
+- PDFs land on the canvas as locked pages with room around them to write. A page navigator jumps between them, and a small scrubber appears in the corner while you move around to flip through pages: drag slowly for one page at a time, faster to skip ahead.
 - Images and PowerPoint `.pptx` files, converted on the device. Nothing is uploaded.
 - Export a view or the whole note to PDF, with your annotations.
 
@@ -50,7 +50,7 @@ The monorepo keeps platform apps in `android/` and `ios/`, with reusable Kotlin 
 
 - Vaults, each with nested folders, its own settings and its own backup repository.
 - Search by title. Drag notes into folders.
-- Your five most recently opened notes sit at the top of the home screen.
+- Your most recently opened notes sit in a row at the top of the home screen, as many as fit.
 - Save any note as a template and start new notes from it.
 - Set Dotnote as the default notes app. On supported devices, the system note shortcut opens a quick note over the lock screen without exposing the rest of your library.
 

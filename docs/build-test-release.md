@@ -56,7 +56,7 @@ Use `adb devices` to confirm the intended target; pass `-s <serial>` when more t
 
 Local snapshots remain debug-signed personal-test builds. An explicitly signed non-debuggable release build and manually triggered GitHub Actions workflow are now configured; the release environment restricts the configured signing secrets to main, and workflow dispatch defaults to publishing the verified APK and GitHub Release after all checks pass. There is no Play Store pipeline. See [app updates and free distribution](app-updates.md).
 
-## Test inventory: 48 JVM tests
+## Test inventory: 49 JVM tests
 
 Tests are in [`android/app/src/test/java/dev/dotnote/app/`](../android/app/src/test/java/dev/dotnote/app/).
 
@@ -70,7 +70,7 @@ Tests are in [`android/app/src/test/java/dev/dotnote/app/`](../android/app/src/t
 | `SceneResourcesTest` | 5 | Visible-cache retention above 400 objects; bounded offscreen LRU; spatial lookup equivalence/order and extreme coordinates; 20,000-object pan query work; edit/undo/viewport invalidation |
 | `WidgetRulesTest` | 2 | Adaptive widget capacity; full folder paths with duplicate display names |
 | `PageScrubRulesTest` | 5 | Page-scrubber speed gain (slow step, full-height fast span, monotonic, short-document floor), page order and nearest page |
-| `RecentHomeRulesTest` | 1 | Home Recent row: five-note cap, active vault, opening order, deleted/duplicate entries skipped |
+| `RecentHomeRulesTest` | 2 | Home Recent row: cards per row by width (minimum one), list cap, active vault, opening order, deleted/duplicate entries skipped |
 | `CalendarRulesTest` | 3 | Monday-first complete months, leap years, year rollover, local midnight across daylight saving |
 
 `UpdateRulesTest` adds 7 tests for release filtering/versioning, release notes shown before download, manifest and asset validation, HTTPS redirect restrictions, bounded/canceled downloads, and APK identity/signature checks. `AppUpdateTest` adds 2 Android tests for installer/provider confinement and invalid/same-version APK rejection. Four Python release-history tests run with `python3 -m unittest discover -s scripts -p 'test_*.py'`.

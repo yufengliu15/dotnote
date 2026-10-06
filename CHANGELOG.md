@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.16.1 — 2026-10-06
+
+- The PDF page scrubber fades out after two seconds without panning, zooming or scrubbing and fades back in as soon as the view moves. It stays visible while you hold it, and drawing alone does not bring it back.
+- The home Recent row fills one row: it shows as many 168 dp cards as fit the screen width (at least one) instead of a fixed five, without horizontal scrolling. Card size is unchanged.
+- Added a cards-per-row case to `RecentHomeRulesTest`. No file format change. Android versionCode: 28.
+
 ## 0.16.0 — 2026-10-06
 
 - Version & updates now shows what's new before anything downloads. After Check for updates, the dialog lists the release notes of every release between the installed build and the offered one, newest first, so you can decide whether to tap Download update or Close. Notes come from the GitHub release text, which the release workflow already builds from this changelog.

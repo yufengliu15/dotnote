@@ -1,5 +1,8 @@
 package dev.dotnote.app
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -26,6 +29,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.abs
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlin.math.roundToInt
 
 /**
@@ -37,6 +42,9 @@ object PageScrub {
     const val SLOW_STEP_DP = 40f
     const val SLOW_SPEED_DP = 250f
     const val FAST_SPEED_DP = 1500f
+
+    /** The scrubber hides after this long without panning, zooming or scrubbing. */
+    const val HIDE_AFTER_MS = 2000L
 
     /** Pages advanced per dp of finger travel at [speedDp] dp/s. */
     fun gain(speedDp: Float, pageCount: Int, heightDp: Float): Float {
@@ -75,58 +83,83 @@ fun BoxScope.PageScrubber(state: AppState, canvas: () -> NotebookView?) {
                 PageScrub.nearest(pdfPages(state.document.items).map { it.bounds }, centerY)
             }
         }
+    // Any camera change (pan, zoom, fling, page jump) or touch on the scrubber restarts the
+    // inactivity timer; it hides HIDE_AFTER_MS after the last one. Hidden, it takes no touches.
+    // Observed with snapshotFlow so panning does not recompose this overlay every frame.
+    var held by remember { mutableStateOf(false) }
+    var visible by remember { mutableStateOf(true) }
+    LaunchedEffect(state) {
+        snapshotFlow { state.document.camera to held }
+            .collectLatest { (_, touching) ->
+                visible = true
+                if (!touching) {
+                    delay(PageScrub.HIDE_AFTER_MS)
+                    visible = false
+                }
+            }
+    }
     val shown = (dragTarget ?: current).coerceIn(0, pages.lastIndex)
     fun go(index: Int) {
         val target = index.coerceIn(0, pages.lastIndex)
         canvas()?.page(pages[target])
     }
+    AnimatedVisibility(
+        visible,
+        Modifier.align(Alignment.TopEnd),
+        enter = fadeIn(),
+        exit = fadeOut(),
+    ) {
     Surface(
-        Modifier.align(Alignment.TopEnd)
-            .padding(12.dp)
+        Modifier.padding(12.dp)
             .width(56.dp)
             .semantics { contentDescription = "PDF page ${shown + 1} of ${pages.size}" }
             .pointerInput(pages) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
-                    val tracker = VelocityTracker()
-                    tracker.addPosition(down.uptimeMillis, down.position)
-                    val heightDp =
-                        canvas()?.let { it.height / density } ?: config.screenHeightDp.toFloat()
-                    var position = current.toFloat()
-                    var moved = 0f
-                    var dragging = false
-                    val start = current
-                    while (true) {
-                        val event = awaitPointerEvent()
-                        val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                        if (!change.pressed) {
-                            if (!dragging) {
-                                // Tap: upper half goes back a page, lower half goes forward.
-                                go(if (change.position.y < size.height / 2) start - 1 else start + 1)
+                    held = true
+                    try {
+                        val tracker = VelocityTracker()
+                        tracker.addPosition(down.uptimeMillis, down.position)
+                        val heightDp =
+                            canvas()?.let { it.height / density } ?: config.screenHeightDp.toFloat()
+                        var position = current.toFloat()
+                        var moved = 0f
+                        var dragging = false
+                        val start = current
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) {
+                                if (!dragging) {
+                                    // Tap: upper half goes back a page, lower half goes forward.
+                                    go(if (change.position.y < size.height / 2) start - 1 else start + 1)
+                                }
+                                break
                             }
-                            break
-                        }
-                        tracker.addPosition(change.uptimeMillis, change.position)
-                        val dy = change.positionChange().y
-                        moved += abs(dy)
-                        if (!dragging && moved > touchSlop) {
-                            dragging = true
-                            canvas()?.settle()
-                        }
-                        if (dragging) {
-                            change.consume()
-                            val speedDp = tracker.calculateVelocity().y / density
-                            position =
-                                (position + dy / density * PageScrub.gain(speedDp, pages.size, heightDp))
-                                    .coerceIn(0f, pages.lastIndex.toFloat())
-                            val target = position.roundToInt()
-                            if (target != dragTarget) {
-                                dragTarget = target
-                                go(target)
+                            tracker.addPosition(change.uptimeMillis, change.position)
+                            val dy = change.positionChange().y
+                            moved += abs(dy)
+                            if (!dragging && moved > touchSlop) {
+                                dragging = true
+                                canvas()?.settle()
+                            }
+                            if (dragging) {
+                                change.consume()
+                                val speedDp = tracker.calculateVelocity().y / density
+                                position =
+                                    (position + dy / density * PageScrub.gain(speedDp, pages.size, heightDp))
+                                        .coerceIn(0f, pages.lastIndex.toFloat())
+                                val target = position.roundToInt()
+                                if (target != dragTarget) {
+                                    dragTarget = target
+                                    go(target)
+                                }
                             }
                         }
+                    } finally {
+                        dragTarget = null
+                        held = false
                     }
-                    dragTarget = null
                 }
             },
         shape = RoundedCornerShape(16.dp),
@@ -145,4 +178,5 @@ fun BoxScope.PageScrubber(state: AppState, canvas: () -> NotebookView?) {
             Icon(Icons.Outlined.KeyboardArrowDown, null, Modifier.size(20.dp), tint = Color(0xff255a4e))
         }
     }
+}
 }

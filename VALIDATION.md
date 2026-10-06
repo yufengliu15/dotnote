@@ -1,3 +1,12 @@
+# 0.16.1 scrubber auto-hide and Recent row validation
+
+App version **0.16.1 / code 28**, October 6, 2026. Built on the 0.16.0 commit.
+
+- **Android:** 49 app JVM tests pass, including `RecentHomeRulesTest.rowFitsAsManyFixedWidthCardsAsTheScreenAllows` (card count at phone, tablet portrait and landscape widths, minimum one). Shared Kotlin JVM tests, release-script tests and `git diff --check` pass. Debug lint passes with **0 errors**; debug and instrumentation APKs assemble.
+- The scrubber timer observes the camera through `snapshotFlow`, so panning does not recompose the overlay each frame. Local checks used JDK 21 targeting Java 17, Kotlin 2.2.21, Gradle 8.13 and SDK 36. No emulator or device run locally; fade timing and row layout need tablet acceptance.
+
+---
+
 # 0.16.0 update release-notes validation
 
 App version **0.16.0 / code 27**, October 6, 2026. Built on the 0.15.0 commit `430206a`.

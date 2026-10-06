@@ -610,7 +610,7 @@ private fun Library(state: AppState) {
     }
 }
 
-/** Up to [HOME_RECENT_LIMIT] most recently opened notes of the active vault, newest first. */
+/** As many recently opened notes of the active vault as fit on one row, newest first. */
 @Composable
 private fun RecentNotesRow(state: AppState, recent: List<NoteSummary>) {
     Column(Modifier.fillMaxWidth().semantics { contentDescription = "Recent notes" }) {
@@ -621,14 +621,16 @@ private fun RecentNotesRow(state: AppState, recent: List<NoteSummary>) {
             color = Color(0xff6f776d),
             modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
         )
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val fit = recentCardsPerRow(maxWidth.value)
         Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(HOME_RECENT_GAP_DP.dp),
         ) {
-            recent.forEach { note ->
+            recent.take(fit).forEach { note ->
                 Surface(
                     onClick = { state.open(note.id) },
-                    modifier = Modifier.width(168.dp),
+                    modifier = Modifier.width(HOME_RECENT_CARD_DP.dp),
                     shape = RoundedCornerShape(14.dp),
                     color = Color.White,
                     border = BorderStroke(1.dp, Color(0xffe0e4da)),
@@ -646,6 +648,7 @@ private fun RecentNotesRow(state: AppState, recent: List<NoteSummary>) {
                     }
                 }
             }
+        }
         }
     }
 }
