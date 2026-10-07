@@ -19,7 +19,7 @@
 
 ## What it is
 
-Dotnote is an infinite dot-grid canvas, a pen, and a toolbar. You open it and write.
+Dotnote is an infinite dot-grid canvas, a pen, and a toolbar.
 
 There is no sign-up, no subscription, no ads and no analytics. Notes are plain files on your device in a format you can read. Backups go to a GitHub repository you own.
 
@@ -116,10 +116,6 @@ Download the APK from [Releases](https://github.com/yufengliu15/dotnote/releases
 After that, update from inside the app: **Version & updates → Check for updates**. You see what changed in the new version before deciding to download it. Downloads are checked against the release signature before Android's installer opens. Install updates over the existing app. Do not uninstall first.
 
 Requires Android 10 or newer. Built for tablets with a stylus. If your pen registers as a finger, turn on **Writing settings → Draw with a finger**.
-
-## Not included
-
-No handwriting recognition, no cloud sync, no collaboration. Text inside imported PDFs is not searchable. These may change; the minimalism will not.
 
 ## Build
 
